@@ -1,0 +1,10 @@
+---
+no-hard-tabs:
+  ignore_code_languages:
+    - go
+  spaces_per_tab: 4
+line-length:
+  code_blocks: false
+  line_length: 120
+ol-prefix:
+  style: ordered

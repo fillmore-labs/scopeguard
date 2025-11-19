@@ -1,0 +1,137 @@
+// Copyright 2025 Oliver Eikemeier. All Rights Reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+//
+// SPDX-License-Identifier: Apache-2.0
+
+package a
+
+import "fmt"
+
+// Variable that can be moved to if statement's Init field.
+func ifStmtInit() {
+	x := 1 // want "Variable 'x' can be moved to tighter if scope"
+	if x > 0 {
+		fmt.Println(x)
+	}
+}
+
+// Variable used in if condition - ideal for Init field.
+func ifConditionInit() {
+	result := compute() // want "Variable 'result' can be moved to tighter if scope"
+	if result > 0 {
+		fmt.Println("positive")
+	}
+}
+
+// Variable used in both condition and body.
+func ifConditionAndBody() {
+	val := compute() // want "Variable 'val' can be moved to tighter if scope"
+	if val > 0 {
+		fmt.Println(val)
+	}
+}
+
+// Variable used in for condition - cannot move because Init is occupied.
+func forStmtInit() {
+	max := 10
+	for i := 0; i < max; i++ {
+		fmt.Println(i)
+	}
+}
+
+// Variable that CAN be moved to for statement's Init field (no existing Init).
+func forStmtInitEmpty() {
+	count := 5 // want "Variable 'count' can be moved to tighter for scope"
+	for count > 0 {
+		fmt.Println(count)
+		count--
+	}
+}
+
+// Variable that CAN be moved to for statement's Init field (no existing Init).
+func forStmtEmpty() {
+	count := 5 // want "Variable 'count' can be moved to tighter for scope"
+	for {
+		if count <= 0 {
+			break
+		}
+
+		fmt.Println(count)
+		count--
+	}
+}
+
+// Variable that can be moved to switch statement's Init field.
+func switchStmtInit() {
+	x := compute() // want "Variable 'x' can be moved to tighter switch scope"
+	switch x {
+	case 1:
+		fmt.Println("one")
+	case 2:
+		fmt.Println("two")
+	}
+}
+
+// Variable used in switch tag and cases.
+func switchTagAndCases() {
+	value := compute() // want "Variable 'value' can be moved to tighter switch scope"
+	switch value {
+	case 1:
+		fmt.Println(value)
+	case 2:
+		fmt.Println(value * 2)
+	}
+}
+
+// Variable that can be moved to type switch Init field.
+func typeSwitchInit() {
+	x := computeAny() // want "Variable 'x' can be moved to tighter type switch scope"
+	switch x.(type) {
+	case int:
+		fmt.Println("int")
+	case string:
+		fmt.Println("string")
+	}
+}
+
+// Variable that can be moved to switch statement's Init field.
+func switchStmtEmpty() {
+	x := compute() // want "Variable 'x' can be moved to tighter switch scope"
+	switch {
+	case x == 1:
+		fmt.Println("one")
+	case x == 2:
+		fmt.Println("two")
+	}
+}
+
+// If statement already has Init - should move to body instead.
+func ifWithExistingInit() {
+	y := 2 // want "Variable 'y' can be moved to tighter block scope"
+	if x := 1; x > 0 {
+		fmt.Println(x, y)
+	}
+}
+
+// For statement already has Init - should not move inside a loop.
+func forWithExistingInit() {
+	limit := 10
+	for i := 0; i < 5; i++ {
+		fmt.Println(i, limit)
+	}
+}
+
+func compute() int { return 42 }
+
+func computeAny() any { return 42 }

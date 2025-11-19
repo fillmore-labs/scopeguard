@@ -1,0 +1,20 @@
+---
+when:
+  - event: push
+    branch: [main, dev]
+
+matrix:
+  GO_VERSION:
+    - "tip-20251115"
+    - "1.25.4"
+    - "1.24.10"
+
+steps:
+  - name: test
+    image: golang:${GO_VERSION}
+    environment:
+      GOTOOLCHAIN: local
+    commands:
+      - go telemetry on
+      - echo "🔨 Testing on $(go version):"
+      - go test ./...

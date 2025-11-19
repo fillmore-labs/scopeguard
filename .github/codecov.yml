@@ -1,0 +1,7 @@
+---
+coverage:
+  status:
+    project: false
+    patch: false
+ignore:
+  - "*.go"

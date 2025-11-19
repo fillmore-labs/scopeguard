@@ -1,0 +1,26 @@
+* text=auto
+*.adoc text
+*.bat text eol=crlf
+*.bazel text
+*.bin filter=lfs diff=lfs merge=lfs -text
+*.bzl text
+*.css text eol=lf
+*.env text
+*.go text
+*.html text eol=lf
+*.jar filter=lfs diff=lfs merge=lfs -text
+*.java text
+*.js text eol=lf
+*.json text
+*.md text
+*.patch text
+*.png filter=lfs diff=lfs merge=lfs -text
+*.proto text linguist-detectable
+*.scala text
+*.ts text eol=lf
+*.yaml text
+*.zip filter=lfs diff=lfs merge=lfs -text
+go.mod text
+go.sum text
+BUILD text -linguist-detectable
+WORKSPACE text -linguist-detectable

@@ -1,0 +1,150 @@
+---
+version: "2"
+
+run:
+  modules-download-mode: readonly
+
+formatters:
+  enable:
+    - gofumpt
+    - goimports
+
+  settings:
+    gofumpt:
+      extra-rules: true
+    goimports:
+      local-prefixes:
+        - fillmore-labs.com/scopeguard
+
+linters:
+  enable:
+    # keep-sorted start
+    - copyloopvar
+    - errcheck
+    - errname
+    - exptostd
+    - gocheckcompilerdirectives
+    - gochecksumtype
+    - gocritic
+    - godot
+    - goheader
+    - gomoddirectives
+    - gosec
+    - govet
+    - iface
+    - inamedparam
+    - ineffassign
+    - intrange
+    - mirror
+    - misspell
+    - modernize
+    - nlreturn
+    - nolintlint
+    - paralleltest
+    - perfsprint
+    - predeclared
+    - reassign
+    - revive
+    - sloglint
+    - staticcheck
+    - tagalign
+    - tagliatelle
+    - testableexamples
+    - thelper
+    - tparallel
+    - unconvert
+    - unused
+    - usestdlibvars
+    - usetesting
+    - wsl_v5
+    # keep-sorted end
+  settings:
+    # keep-sorted start
+    errcheck:
+      exclude-functions:
+        - (io/fs.File).Close
+        - (*os.File).Close
+        - (*github.com/goccy/go-yaml.Encoder).Close
+      verbose: true
+    goheader:
+      values:
+        const:
+          AUTHOR: Oliver Eikemeier
+          RANGE: "2025"
+      template: |-
+        Copyright {{ RANGE }} {{ AUTHOR }}. All Rights Reserved.
+
+        Licensed under the Apache License, Version 2.0 (the "License");
+        you may not use this file except in compliance with the License.
+        You may obtain a copy of the License at
+
+            http://www.apache.org/licenses/LICENSE-2.0
+
+        Unless required by applicable law or agreed to in writing, software
+        distributed under the License is distributed on an "AS IS" BASIS,
+        WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+        See the License for the specific language governing permissions and
+        limitations under the License.
+
+        SPDX-License-Identifier: Apache-2.0
+    govet:
+      enable-all: true
+      disable:
+        - fieldalignment
+      settings:
+        shadow:
+          strict: true
+    nlreturn:
+      block-size: 2
+    predeclared:
+      ignore: ["new"]
+    revive:
+      rules:
+        # keep-sorted start
+        - name: atomic
+        - name: blank-imports
+        - name: context-as-argument
+        - name: context-keys-type
+        - name: dot-imports
+          exclude: ["TEST"]
+        - name: early-return
+          arguments:
+            - allow-jump: true
+        - name: empty-block
+        - name: error-naming
+        - name: error-return
+        - name: error-strings
+        - name: errorf
+        - name: exported
+        - name: increment-decrement
+        - name: indent-error-flow
+        - name: range
+        - name: receiver-naming
+        - name: redefines-builtin-id
+        - name: superfluous-else
+        - name: time-naming
+        - name: unexported-return
+        - name: unreachable-code
+        - name: unused-parameter
+        - name: var-declaration
+        - name: var-naming
+          # keep-sorted end
+    tagliatelle:
+      case:
+        rules:
+          json: kebab
+          yaml: kebab
+        use-field-name: true
+    wsl_v5:
+      disable:
+        - assign
+        # keep-sorted end
+  exclusions:
+    rules:
+      - path: ^main\.go$
+        linters:
+          - gocheckcompilerdirectives
+        text: "go:debug"
+      - linters:
+          - govet
+        text: '^shadow: declaration of "(ctx|err|ok)" shadows declaration at line \d+$'

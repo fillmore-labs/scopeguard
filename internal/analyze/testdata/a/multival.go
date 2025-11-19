@@ -1,0 +1,76 @@
+// Copyright 2025 Oliver Eikemeier. All Rights Reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+//
+// SPDX-License-Identifier: Apache-2.0
+
+package a
+
+import "fmt"
+
+// Multi-value assignment where both variables are only used in one block.
+func multiValSimple() {
+	var y int    // want "Variable 'y' is unused and can be removed"
+	x, y := 1, 2 // want "Variables 'x' and 'y' can be moved to tighter block scope"
+	if true {
+		fmt.Println(x, y)
+	}
+}
+
+// Multi-value assignment where both variables are only used in one block.
+func multiValTwoBlock() {
+	x := 1 // want "Variable 'x' can be moved to tighter block scope"
+	y := 2 // want "Variable 'y' can be moved to tighter block scope"
+	if true {
+		fmt.Println(x, y)
+	}
+}
+
+// Multi-value assignment where variables have different usage patterns.
+func multiValDifferent() {
+	x, y := 1, 2
+	if true {
+		fmt.Println(x, y)
+	}
+	fmt.Println(x) // x is used outside, so neither should be moved
+}
+
+// Multi-value assignment with 3 variables.
+func multiValThreeBlock() {
+	x, y, z := 1, 2, 3 // want "Variables 'x', 'y' and 'z' can be moved to tighter block scope"
+	if true {
+		fmt.Println(x, y, z)
+	} else {
+		fmt.Println("false")
+	}
+}
+
+// Multi-value assignment with 3 variables.
+func multiValThreeIf() {
+	x, y, z := 1, 2, 3 // want "Variables 'x', 'y' and 'z' can be moved to tighter if scope"
+	if true {
+		fmt.Println(x, y)
+	} else {
+		fmt.Println(z)
+	}
+}
+
+// Multi-value assignment where only one variable is used in tighter scope.
+func multiValOneUsed() {
+	var y int // want "Variable 'y' is unused and can be removed"
+	x, y := 1, 2
+	if true {
+		fmt.Println(x)
+	}
+	fmt.Println(y)
+}
