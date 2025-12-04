@@ -18,7 +18,6 @@ package analyze
 
 import (
 	"bytes"
-	"fmt"
 	"go/ast"
 	"go/printer"
 	"go/token"
@@ -32,7 +31,7 @@ import (
 var rawcfg = &printer.Config{Mode: printer.RawFormat}
 
 // createEdits creates a suggested fix to move a variable declaration to a tighter scope.
-func (p pass) createEdits(c inspector.Cursor, targetNode ast.Node, unused []string) []analysis.TextEdit {
+func createEdits(p Pass, c inspector.Cursor, targetNode ast.Node, unused []string) []analysis.TextEdit {
 	stmt := c.Node()
 
 	// Get the bounds of the original statement (including comments)
@@ -44,7 +43,7 @@ func (p pass) createEdits(c inspector.Cursor, targetNode ast.Node, unused []stri
 	}
 
 	// Determine where and how to insert the declaration
-	info := p.calcInsertInfo(targetNode, stmt)
+	info := calcInsertInfo(p, targetNode, stmt)
 	if !info.pos.IsValid() {
 		return nil
 	}
@@ -61,7 +60,7 @@ func (p pass) createEdits(c inspector.Cursor, targetNode ast.Node, unused []stri
 	}
 
 	if err := rawcfg.Fprint(&buf, p.Fset, stmtToInsert); err != nil {
-		p.reportInternalError(stmt, "Can't render statement: %s", err)
+		p.ReportInternalError(stmt, "Can't render statement: %s", err)
 		return nil
 	}
 
@@ -190,14 +189,16 @@ type insertInfo struct {
 	extraEdits     []analysis.TextEdit // Additional edits (e.g., for while-style for loops)
 }
 
+const initNotEmpty = "Init is not empty"
+
 // calcInsertInfo determines where and how to insert a declaration based on the target node type.
 //
 // Returns information about where and how to insert the declaration.
-func (p pass) calcInsertInfo(targetNode, stmt ast.Node) insertInfo {
+func calcInsertInfo(p Pass, targetNode, stmt ast.Node) insertInfo {
 	switch n := targetNode.(type) {
 	case *ast.IfStmt:
 		if n.Init != nil {
-			p.reportInvalidTarget(n.Init, stmt)
+			p.ReportInvalidTarget(n.Init, stmt, initNotEmpty)
 			return insertInfo{pos: token.NoPos}
 		}
 
@@ -209,7 +210,7 @@ func (p pass) calcInsertInfo(targetNode, stmt ast.Node) insertInfo {
 
 	case *ast.ForStmt:
 		if n.Init != nil {
-			p.reportInvalidTarget(n.Init, stmt)
+			p.ReportInvalidTarget(n.Init, stmt, initNotEmpty)
 			return insertInfo{pos: token.NoPos}
 		}
 
@@ -231,7 +232,7 @@ func (p pass) calcInsertInfo(targetNode, stmt ast.Node) insertInfo {
 
 	case *ast.SwitchStmt:
 		if n.Init != nil {
-			p.reportInvalidTarget(n.Init, stmt)
+			p.ReportInvalidTarget(n.Init, stmt, initNotEmpty)
 			return insertInfo{pos: token.NoPos}
 		}
 
@@ -243,7 +244,7 @@ func (p pass) calcInsertInfo(targetNode, stmt ast.Node) insertInfo {
 
 	case *ast.TypeSwitchStmt:
 		if n.Init != nil {
-			p.reportInvalidTarget(n.Init, stmt)
+			p.ReportInvalidTarget(n.Init, stmt, initNotEmpty)
 			return insertInfo{pos: token.NoPos}
 		}
 
@@ -272,6 +273,7 @@ func (p pass) calcInsertInfo(targetNode, stmt ast.Node) insertInfo {
 		}
 
 	default:
+		p.ReportInvalidTarget(n, stmt, "Invalid target")
 		return insertInfo{pos: token.NoPos}
 	}
 }
@@ -493,47 +495,4 @@ expressions:
 
 	// No problematic composite literals found
 	return false
-}
-
-// scopeTypeName returns a human-readable name for the scope type.
-func scopeTypeName(node ast.Node) string {
-	switch node.(type) {
-	// keep-sorted start newline_separated=yes
-	case *ast.BlockStmt:
-		return "block"
-
-	case *ast.CaseClause:
-		return "case"
-
-	case *ast.CommClause:
-		return "select case"
-
-	case *ast.File:
-		return "file"
-
-	case *ast.ForStmt:
-		return "for"
-
-	case *ast.FuncType:
-		return "function"
-
-	case *ast.IfStmt:
-		return "if"
-
-	case *ast.RangeStmt:
-		return "range"
-
-	case *ast.SwitchStmt:
-		return "switch"
-
-	case *ast.TypeSwitchStmt:
-		return "type switch"
-
-	case nil:
-		return "<nil>"
-
-	default:
-		return fmt.Sprintf("nested: %T", node)
-		// keep-sorted end
-	}
 }

@@ -30,5 +30,8 @@ func registerFlags(o *analyze.Options, flags *flag.FlagSet) {
 	}
 
 	flags.BoolVar(&o.Generated, "generated", o.Generated, "check generated files")
-	flags.IntVar(&o.MaxLines, "max-lines", o.MaxLines, "maximum number of extra lines to suggest a move")
+	flags.IntVar(&o.MaxLines, "max-lines", o.MaxLines, "maximum declaration lines for moving to initializers")
+	flags.TextVar(&o.ScopeLevel, "scope", o.ScopeLevel, "scope analysis `level`, \"full\", \"conservative\" or \"off\"")
+	flags.TextVar(&o.ShadowLevel, "shadow", o.ShadowLevel, "shadow analysis `level`, \"full\" or \"off\"")
+	flags.TextVar(&o.NestedAssign, "nested-assign", o.NestedAssign, "nested assign `level`, \"full\" or \"off\"")
 }

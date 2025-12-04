@@ -16,21 +16,35 @@
 
 package analyze
 
+import "fillmore-labs.com/scopeguard/analyzer/level"
+
 // Options represent configuration options for the scopeguard analyzer.
 type Options struct {
 	// Generated specifies whether to include analysis of generated files.
 	Generated bool
 
-	// MaxLines specifies the maximum number of lines a declaration can span to be considered for moving.
-	// If set to -1 (default), there is no limit.
+	// MaxLines specifies the maximum number of lines a declaration can span to be considered for moving
+	// into control flow initializers.
 	MaxLines int
+
+	// ScopeLevel determines which scope checks are enabled.
+	ScopeLevel level.Scope
+
+	// ShadowLevel determines which shadow checks are enabled.
+	ShadowLevel level.Shadow
+
+	// NestedAssign determines which nested assign checks are enabled.
+	NestedAssign level.NestedAssign
 }
 
 // DefaultOptions initializes and returns a new Options instance with default values.
 func DefaultOptions() *Options {
 	o := &Options{
-		Generated: false,
-		MaxLines:  -1,
+		Generated:    false,
+		MaxLines:     -1,
+		ScopeLevel:   level.ScopeFull,
+		ShadowLevel:  level.ShadowFull,
+		NestedAssign: level.NestedFull,
 	}
 
 	return o

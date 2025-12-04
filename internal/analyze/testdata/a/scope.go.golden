@@ -14,25 +14,20 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-package analyze
+package a
 
-import (
-	"context"
-	"go/ast"
-	"runtime/trace"
+import "fmt"
 
-	"golang.org/x/tools/go/ast/inspector"
+func skipScope(a any) (ok bool) {
+	// want "Variable 'b' can be moved to tighter if scope"
+	if b, _ := a.(int); b == 1 {
+		fmt.Println(b)
+	}
 
-	"fillmore-labs.com/scopeguard/analyzer/level"
-)
+	c, ok := a.(string)
+	if c == "1" {
+		fmt.Println(c)
+	}
 
-// Usage collects variable declarations and tracks their usages to determine the minimum scope.
-func Usage(ctx context.Context, p Pass, scopes ScopeAnalyzer, body inspector.Cursor, funcType *ast.FuncType, scopeLevel level.Scope, shadowLevel level.Shadow, nestedAssign level.NestedAssign) (UsageResult, ShadowUsed, NestedAssigned) {
-	defer trace.StartRegion(ctx, "Usage").End()
-
-	uc := newUsageCollector(p, scopes, scopeLevel, shadowLevel, nestedAssign)
-
-	uc.inspectBody(body, funcType)
-
-	return uc.result()
+	return
 }

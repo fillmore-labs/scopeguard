@@ -62,10 +62,13 @@ linters:
     custom:
       scopeguard:
         type: module
-        description: "scopeguard identifies variables with unnecessarily wide scope and suggests moving
-          them to tighter scopes."
-        original-url: "https://fillmore-labs.com/scopeguard"
+        description: >-
+          scopeguard identifies variables with unnecessarily wide scope and suggests moving them to tighter
+          scopes.
+        original-url: https://fillmore-labs.com/scopeguard
         settings:
+          scope: conservative
+          shadow: full
           max-lines: 10
     # keep-sorted start
     errcheck:

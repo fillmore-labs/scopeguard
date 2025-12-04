@@ -22,6 +22,27 @@ import (
 	"iter"
 )
 
+// allListed yields all listed [*ast.Ident] nodes.
+func allListed(list *ast.FieldList) iter.Seq[*ast.Ident] {
+	return func(yield func(*ast.Ident) bool) {
+		if list == nil {
+			return
+		}
+
+		for _, names := range list.List {
+			for _, id := range names.Names {
+				if id.Name == "_" {
+					continue // blank identifier
+				}
+
+				if !yield(id) {
+					return
+				}
+			}
+		}
+	}
+}
+
 // allAssigned yields all assigned [*ast.Ident] nodes.
 func allAssigned(stmt *ast.AssignStmt) iter.Seq[*ast.Ident] {
 	return func(yield func(*ast.Ident) bool) {
@@ -53,27 +74,6 @@ func allDeclared(stmt *ast.DeclStmt) iter.Seq[*ast.Ident] {
 			}
 
 			for _, id := range vspec.Names {
-				if id.Name == "_" {
-					continue // blank identifier
-				}
-
-				if !yield(id) {
-					return
-				}
-			}
-		}
-	}
-}
-
-// allListed yields all listed [*ast.Ident] nodes.
-func allListed(list *ast.FieldList) iter.Seq[*ast.Ident] {
-	return func(yield func(*ast.Ident) bool) {
-		if list == nil {
-			return
-		}
-
-		for _, names := range list.List {
-			for _, id := range names.Names {
 				if id.Name == "_" {
 					continue // blank identifier
 				}

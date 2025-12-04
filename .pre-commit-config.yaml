@@ -11,10 +11,10 @@ repos:
     hooks:
       - id: keep-sorted
   - repo: https://github.com/DavidAnson/markdownlint-cli2
-    rev: v0.19.1
+    rev: v0.20.0
     hooks:
       - id: markdownlint-cli2
   - repo: https://github.com/golangci/golangci-lint
-    rev: v2.7.0
+    rev: v2.7.2
     hooks:
       - id: golangci-lint

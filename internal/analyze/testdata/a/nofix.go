@@ -50,3 +50,13 @@ func intString() {
 
 	fmt.Println(i.String(), k)
 }
+
+// Untypes nil use - would be broken by fix
+func untypedNilUse() {
+	var err error
+
+	err, ptr := nil, *new(error) // want "Variables 'err' and 'ptr' can be moved to tighter if scope"
+	if err == ptr {
+		fmt.Println(err)
+	}
+}

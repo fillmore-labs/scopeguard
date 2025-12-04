@@ -21,11 +21,28 @@ import (
 	"go/token"
 	"go/types"
 	"iter"
-	"slices"
 
 	"golang.org/x/tools/go/ast/edge"
 	"golang.org/x/tools/go/ast/inspector"
 )
+
+// collectUnusedVariables builds a map from declaration indices to the names of
+// variables that are declared but never read at that declaration site.
+func collectUnusedVariables(usages map[*types.Var][]NodeUsage) map[NodeIndex][]string {
+	unused := make(map[NodeIndex][]string)
+
+	for v, nodes := range usages {
+		for _, usage := range nodes {
+			if usage.Flags&UsageUsed != 0 {
+				continue
+			}
+
+			unused[usage.Decl] = append(unused[usage.Decl], v.Name())
+		}
+	}
+
+	return unused
+}
 
 // alreadyDeclaredInScope checks whether any identifier is already declared in the target scope.
 func alreadyDeclaredInScope(safeScope *types.Scope, identifiers iter.Seq[*ast.Ident]) bool {
@@ -41,13 +58,14 @@ func alreadyDeclaredInScope(safeScope *types.Scope, identifiers iter.Seq[*ast.Id
 
 // usedIdentifierShadowed checks whether any identifier used in the declaration would be
 // shadowed by a later declaration that would make the move unsafe.
-func usedIdentifierShadowed(info *types.Info, c inspector.Cursor, declNode ast.Node, declScope, safeScope *types.Scope) bool {
+func usedIdentifierShadowed(info *types.Info, declCursor inspector.Cursor, declScope, safeScope *types.Scope) bool {
+	declNode := declCursor.Node()
 	start, end := declNode.Pos(), declNode.End()
 
 	checked := make(map[string]struct{})
 
 	// Find used identifiers
-	for e := range c.Preorder((*ast.Ident)(nil)) {
+	for e := range declCursor.Preorder((*ast.Ident)(nil)) {
 		// Filter out definitions and field selectors - we only care about identifier uses
 		switch kind, _ := e.ParentEdge(); kind {
 		case edge.AssignStmt_Lhs, // Definition or side effect
@@ -101,193 +119,82 @@ func usedIdentifierShadowed(info *types.Info, c inspector.Cursor, declNode ast.N
 	return false
 }
 
-// resolveTypeIncompatibilities prevents moves that would lose type information.
+// checkSkippedStatements checks whether there are any statements between the node at declCursor and the target.
+// It returns true if possible side effects are detected (i.e., the move might be unsafe).
 //
-// When a variable is reassigned with a different type inference, moving the first
-// declaration would change the variable's type. This function detects such cases
-// and marks them as dontFix to preserve the original type semantics.
-func (t targets) resolveTypeIncompatibilities(in *inspector.Inspector, info *types.Info, usages map[*types.Var][]nodeUsage) {
-	for v, nodes := range usages {
-		if len(nodes) < 2 {
-			continue
+// Note that the side effects need not be in the skipped statements, they might also be in
+// the declaration itself.
+func checkSkippedStatements(declCursor inspector.Cursor, targetNode ast.Node) bool {
+	declNode := declCursor.Node()
+
+	// Range to check
+	start := declNode.End()
+	end := targetNode.Pos()
+
+	// Find a parent that spans start...end.
+	//
+	// It does not necessarily include targetNode, only everything between.
+	parent := declCursor.Parent()
+	for {
+		if parentNode := parent.Node(); parentNode == nil || parentNode.End() >= end {
+			break
 		}
 
-		// Check whether the first target is a candidate
-		first := nodes[0].decl
-		if first == invalidNode {
-			continue
-		}
-
-		target, ok := t[first]
-		if !ok || target.dontFix {
-			continue
-		}
-
-		// Skip if not being moved and the variable is not in the unused list.
-		// In this case the declaration remains in place and no action is needed.
-		if target.targetNode == nil && !slices.Contains(target.unused, v.Name()) {
-			continue
-		}
-
-		next := t.findNextUsage(nodes)
-		if next == invalidNode {
-			continue
-		}
-
-		stmt, ok := in.At(next).Node().(*ast.AssignStmt)
-		if !ok {
-			continue
-		}
-
-		if typ := exprType(info, stmt, v.Name()); types.Identical(v.Type(), typ) {
-			continue
-		}
-
-		// While the value is not used, the type is
-		target.unused = slices.DeleteFunc(target.unused, func(name string) bool { return name == v.Name() })
-		// Prevent movement
-		if target.targetNode != nil {
-			target.dontFix = true
-		}
-		t[first] = target
-	}
-}
-
-// findNextUsage finds the next non-moved usage of a variable after the first declaration.
-// Returns invalidNodeIndex if no such usage exists.
-func (t targets) findNextUsage(usages []nodeUsage) nodeIndex {
-	for i := 1; i < len(usages); i++ {
-		decl := usages[i].decl
-
-		// skip moved declarations
-		if ti, ok := t[decl]; ok && !ti.dontFix {
-			continue
-		}
-
-		return decl
+		parent = parent.Parent()
 	}
 
-	return invalidNode
-}
+	for s := range parent.Preorder(
+		// keep-sorted start
+		(*ast.AssignStmt)(nil),
+		(*ast.BranchStmt)(nil),
+		(*ast.CaseClause)(nil),
+		(*ast.CommClause)(nil),
+		(*ast.DeferStmt)(nil),
+		(*ast.ExprStmt)(nil),
+		(*ast.ForStmt)(nil),
+		(*ast.GenDecl)(nil),
+		(*ast.GoStmt)(nil),
+		(*ast.IfStmt)(nil),
+		(*ast.IncDecStmt)(nil),
+		(*ast.LabeledStmt)(nil),
+		(*ast.RangeStmt)(nil),
+		(*ast.ReturnStmt)(nil),
+		(*ast.SelectStmt)(nil),
+		(*ast.SendStmt)(nil),
+		(*ast.SwitchStmt)(nil),
+		(*ast.TypeSwitchStmt)(nil),
+		// keep-sorted end
 
-// exprType finds the inferred type of the assigned variable.
-func exprType(info *types.Info, n *ast.AssignStmt, name string) types.Type {
-	idx := assignmentIndex(n, name)
-	if idx < 0 {
-		return nil
-	}
-
-	switch len(n.Rhs) {
-	case len(n.Lhs):
-		// [types.Checker] calls `updateExprType` for untyped constants.
-		return assignedType(info, n.Rhs[idx])
-
-	case 1:
-		if tuple, ok := info.Types[n.Rhs[0]].Type.(*types.Tuple); ok {
-			return tuple.At(idx).Type()
-		}
-	}
-
-	return nil
-}
-
-// universeRune is the object for the predeclared "rune" type.
-var universeRune = types.Universe.Lookup("rune")
-
-// assignedType returns the type of the expressions.
-//
-// Note that this is a simplified implementation that only handles numeric and string literals or
-// identifiers denoting a constant, not all constant expressions.
-func assignedType(info *types.Info, expr ast.Expr) types.Type {
-	switch expr := ast.Unparen(expr).(type) {
-	case *ast.BasicLit:
-		switch expr.Kind {
-		case token.INT:
-			return types.Typ[types.Int]
-		case token.FLOAT:
-			return types.Typ[types.Float64]
-		case token.IMAG:
-			return types.Typ[types.Complex128]
-		case token.CHAR:
-			return universeRune.Type()
-		case token.STRING:
-			return types.Typ[types.String]
+		// Note regarding missing ast.Stmt types:
+		// - *ast.BlockStmt is covered by its sub-statements
+		// - *ast.DeclStmt is covered by *ast.GenDecl
+		// - *ast.EmptyStmt has no side effects
+	) {
+		n := s.Node()
+		if n.Pos() >= end {
+			break // We've moved past the area
 		}
 
-	case *ast.Ident:
-		if obj, ok := info.Uses[expr]; ok {
-			return types.Default(obj.Type())
-		}
-	}
-
-	return info.Types[expr].Type
-}
-
-// assignmentIndex returns the index of the variable with the given name in the LHS of an assignment.
-// Returns -1 if the variable is not found.
-func assignmentIndex(n *ast.AssignStmt, name string) int {
-	for i, expr := range n.Lhs {
-		if id, ok := expr.(*ast.Ident); ok && id.Name == name {
-			return i
-		}
-	}
-
-	return -1
-}
-
-// findOrphanedDeclarations identifies declarations that would become entirely unused
-// after other declarations are moved. These can have all their variables replaced with '_'.
-//
-// This handles the case where a variable is reassigned multiple times, and moving
-// the first declaration leaves subsequent assignments with no remaining reads.
-func (t targets) findOrphanedDeclarations(usages map[*types.Var][]nodeUsage) map[nodeIndex][]string {
-	orphanedDeclarations := make(map[nodeIndex][]string)
-
-	for v, nodes := range usages {
-		// Optimization: We need at least one moved and one non-moved
-		if len(nodes) < 2 {
-			continue
+		if n.Pos() < start {
+			continue // Ignore preamble
 		}
 
-		// Check if there are any read usages remaining
-		hasUsage := false
-
-		for _, usage := range nodes {
-			index := usage.decl
-			if index == invalidNode {
-				hasUsage = true
-				break
-			}
-
-			// skip moved declarations
-			if t, ok := t[index]; ok && !t.dontFix {
-				continue
-			}
-
-			if usage.used {
-				hasUsage = true
-				break
+		if decl, ok := n.(*ast.GenDecl); ok {
+			if decl.Tok != token.VAR {
+				continue // Const and Type declarations are safe to cross
 			}
 		}
 
-		if hasUsage {
-			continue
-		}
-
-		// No usages remaining, mark all remaining occurrences for removal
-		for _, usage := range nodes {
-			index := usage.decl
-			if index == invalidNode {
-				continue
-			}
-
-			if t, ok := t[index]; ok && !t.dontFix {
-				continue
-			}
-
-			orphanedDeclarations[index] = append(orphanedDeclarations[index], v.Name())
-		}
+		return true
 	}
 
-	return orphanedDeclarations
+	return false
+}
+
+// hasUsedTypeChange test whether there are a type change in the declaration
+// and the changed type is used - which would change the semantics, but is seldom a problem.
+// We flag it either in conservative mode, or for untyped nil, which would be a compile error.
+func hasUsedTypeChange(flags UsageFlags, conservative bool) bool {
+	return flags&(UsageTypeChange|UsageUsed) == UsageTypeChange|UsageUsed &&
+		(conservative || flags&UsageUntypedNil != 0)
 }

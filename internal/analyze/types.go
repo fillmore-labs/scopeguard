@@ -21,45 +21,80 @@ import (
 	"go/types"
 )
 
-// nodeIndex is the index from [inspector.Cursor], increases monotonically throughout the traversal.
-type nodeIndex = int32
+// NodeIndex is the index from [inspector.Cursor], increases monotonically throughout the traversal.
+type NodeIndex = int32
 
-const invalidNode nodeIndex = -1
+// InvalidNode represents an invalid node index.
+const InvalidNode NodeIndex = -1
 
-// scopeRange represents the scope range for a declaration.
-type scopeRange = struct {
-	decl, // The scope where the variable was declared
-	usage *types.Scope // The tightest scope containing all uses (LCA of all usage scopes)
+// ScopeRange represents the scope range for a declaration.
+type ScopeRange struct {
+	// Decl is the scope where the variable was declared
+	Decl,
+	// Usage is the tightest scope containing all uses
+	Usage *types.Scope
 }
 
-// usageResult contains the scope analysis for all variable declarations from stage 1.
-type usageResult = struct {
+// UsageResult contains the scope analysis for all variable declarations from stage 1.
+type UsageResult struct {
 	// Map from declaration indices to their computed scope ranges.
-	// The scopeRange.usage field represents the tightest scope containing all uses.
-	scopeRanges map[nodeIndex]scopeRange
+	ScopeRanges map[NodeIndex]ScopeRange
 
 	// Map of variables to usage.
-	usages map[*types.Var][]nodeUsage
+	Usages map[*types.Var][]NodeUsage
 }
 
-// nodeUsage tracks a single usage of a declaration.
-type nodeUsage = struct {
-	decl nodeIndex
-	used bool
+// ShadowUse contains information about a variable use after previously shadowed.
+type ShadowUse struct {
+	Var       *types.Var
+	Use, Decl NodeIndex
 }
 
-// moveTarget represents a declaration that can be moved to a tighter scope.
-type moveTarget = struct {
-	targetNode ast.Node  // The node with  the target scope (e.g., *ast.IfStmt, *ast.BlockStmt)
-	unused     []string  // Unused identifiers in this declaration
-	decl       nodeIndex // Inspector index of the declaration statement to move
-	dontFix    bool      // Don't apply fixes
+// ShadowUsed contains information about variables use after previously shadowed.
+type ShadowUsed []ShadowUse
+
+// NestedAssign contains information about a nested variable assign.
+type NestedAssign struct {
+	id   *ast.Ident
+	stmt ast.Node
 }
 
-// targetResult is the complete set of declarations that can be moved to tighter scopes.
+// NestedAssigned contains information about nested variable assigns.
+type NestedAssigned []NestedAssign
+
+// NodeUsage tracks a single usage of a declaration.
+type NodeUsage struct {
+	Decl  NodeIndex
+	Flags UsageFlags
+}
+
+// UsageFlags indicates how a variable is used.
+type UsageFlags uint8
+
+const (
+	// UsageUsed indicates the variable declaration is used.
+	UsageUsed UsageFlags = 1 << iota
+	// UsageTypeChange indicates the variable redeclaration implies a type change.
+	UsageTypeChange
+	// UsageUntypedNil indicates the variable redeclaration is assigned an untyped nil.
+	UsageUntypedNil
+
+	// UsageNone indicates the variable declaration is unused.
+	UsageNone UsageFlags = 0
+)
+
+// MoveTarget represents a declaration that can be moved to a tighter scope.
+type MoveTarget struct {
+	TargetNode ast.Node   // The node with the target scope (e.g., *[ast.IfStmt], *[ast.BlockStmt])
+	Unused     []string   // Unused identifiers in this declaration
+	Decl       NodeIndex  // Inspector index of the declaration statement to move
+	Status     MoveStatus // Status indicating if the move is safe or why it isn't
+}
+
+// TargetResult is the complete set of declarations that can be moved to tighter scopes.
 //
 // This slice is sorted by source position to ensure
 // deterministic diagnostic ordering in the analyzer output.
-type targetResult = struct {
-	move []moveTarget
+type TargetResult struct {
+	Move []MoveTarget
 }

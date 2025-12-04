@@ -17,24 +17,26 @@
 package analyze
 
 import (
+	"fmt"
 	"go/ast"
 	"go/token"
 	"go/types"
 	"iter"
+	"maps"
 )
 
-// scopeAnalyzer provides scope analysis for variable movement.
+// ScopeAnalyzer provides scope analysis for variable movement.
 //
 // It maps scopes to their corresponding AST nodes and provides methods to:
 //   - Determine if a variable can safely be moved to a tighter scope
 //   - Find the tightest "safe" scope that avoids breaking semantics
-type scopeAnalyzer map[*types.Scope]ast.Node
+type ScopeAnalyzer map[*types.Scope]ast.Node
 
-// scopeAnalyzer creates a scope analyzer from the type checker's scope map.
-func (p pass) scopeAnalyzer() scopeAnalyzer {
+// NewScopeAnalyzer creates a scope analyzer from the type checker's scope map.
+func NewScopeAnalyzer(p Pass) ScopeAnalyzer {
 	scopes := p.TypesInfo.Scopes
 
-	s := make(scopeAnalyzer, len(scopes))
+	s := make(ScopeAnalyzer, len(scopes))
 	for node, scope := range scopes {
 		s[scope] = node
 	}
@@ -42,13 +44,13 @@ func (p pass) scopeAnalyzer() scopeAnalyzer {
 	return s
 }
 
-// innermost finds the innermost scope containing a use, with special handling
+// Innermost finds the innermost scope containing a use, with special handling
 // for case/select expressions.
 //
 // For most positions, this returns the innermost scope from the type checker. However,
 // when a variable is used in a case or select expression (between "case" and ":" tokens),
 // it adjusts the scope to the parent.
-func (s scopeAnalyzer) innermost(declScope *types.Scope, pos token.Pos) *types.Scope {
+func (s ScopeAnalyzer) Innermost(declScope *types.Scope, pos token.Pos) *types.Scope {
 	usageScope := declScope.Innermost(pos)
 	switch usageScope {
 	case declScope, nil:
@@ -57,16 +59,16 @@ func (s scopeAnalyzer) innermost(declScope *types.Scope, pos token.Pos) *types.S
 
 	// Special handling: if the variable is used in case/select expression,
 	// adjust scope to parent to prevent moving a declaration into the case body
-	switch node := s[usageScope].(type) {
+	switch n := s[usageScope].(type) {
 	case *ast.CaseClause:
-		if contains(node.Case, node.Colon, pos) {
+		if pos < n.Colon {
 			// The variable is used in the case expression: case x == 0:
 			// Can't move x into this case's scope
 			usageScope = usageScope.Parent()
 		}
 
 	case *ast.CommClause:
-		if contains(node.Case, node.Colon, pos) {
+		if pos < n.Colon {
 			// The variable is used in the send/receive: case ch <- x:
 			// Can't move x into this select case's scope
 			usageScope = usageScope.Parent()
@@ -76,46 +78,61 @@ func (s scopeAnalyzer) innermost(declScope *types.Scope, pos token.Pos) *types.S
 	return usageScope
 }
 
-// findTargetNode determines if a short variable declaration can be moved to a tighter scope.
-func (s scopeAnalyzer) findTargetNode(declScope, targetScope *types.Scope) (ast.Node, bool) {
-	// Verify the result is actually tighter than the current declaration
-	for scope := targetScope; scope != declScope; scope = scope.Parent() {
-		// Look up the AST node for the safe minimum scope
-		targetNode, ok := s[scope]
-		if !ok { // This should always succeed, but we check to be defensive
-			return nil, false
+// Shadowed looks for a shadowed variable in parent scopes.
+func (s ScopeAnalyzer) Shadowed(v *types.Var, pos token.Pos) types.Object {
+	scope := v.Parent()
+	if s.functionScope(scope) {
+		return nil // Declared at the function top level
+	}
+
+	// Search in parent scopes
+	for parent := scope.Parent(); parent != types.Universe; parent = parent.Parent() {
+		if shadowed := parent.Lookup(v.Name()); shadowed != nil && shadowed.Pos() <= pos {
+			if !types.Identical(shadowed.Type(), v.Type()) {
+				return nil // Has different type, i.e. x := x.(T)
+			}
+
+			// Found a shadowed variable.
+			return shadowed
 		}
 
-		if initField, ok := canUseNode(targetNode); ok {
+		if s.functionScope(parent) {
+			return nil // Don't cross function definitions
+		}
+	}
+
+	return nil
+}
+
+func (s ScopeAnalyzer) functionScope(scope *types.Scope) bool {
+	_, ok := s[scope].(*ast.FuncType)
+	return ok
+}
+
+// FindTargetNode finds a suitable node for moving a variable to a tighter scope.
+func (s ScopeAnalyzer) FindTargetNode(declScope, targetScope *types.Scope, onlyBlock bool) (ast.Node, bool) {
+	for scope := targetScope; scope != declScope; scope = scope.Parent() {
+		targetNode, ok := s[scope]
+		if !ok {
+			panic("Invalid scope range")
+		}
+
+		var initField bool
+
+		switch onlyBlock {
+		case false:
+			initField, ok = canUseNode(targetNode)
+
+		case true:
+			initField, ok = canUseBlockNode(targetNode)
+		}
+
+		if ok {
 			return targetNode, initField
 		}
 	}
 
 	return nil, false
-}
-
-// findTargetNodeInBlock finds a suitable block-scope node for moving a variable.
-//
-// This is a restricted version of findTargetNode that only considers
-// block scopes (BlockStmt, CaseClause, CommClause).
-func (s scopeAnalyzer) findTargetNodeInBlock(declScope, targetScope *types.Scope) ast.Node {
-	// Verify the result is actually tighter than the current declaration
-	for scope := targetScope; scope != declScope; scope = scope.Parent() {
-		// Look up the AST node for the safe minimum scope
-		targetNode, ok := s[scope]
-		if !ok { // This should always succeed, but we check to be defensive
-			return nil
-		}
-
-		switch targetNode.(type) {
-		case *ast.BlockStmt,
-			*ast.CaseClause,
-			*ast.CommClause:
-			return targetNode
-		}
-	}
-
-	return nil
 }
 
 // canUseNode determines if a variable can be moved to a given AST node.
@@ -131,9 +148,6 @@ func canUseNode(targetNode ast.Node) (initfield, ok bool) {
 	case *ast.ForStmt:
 		return true, n.Init == nil
 
-	case *ast.RangeStmt:
-		return false, false
-
 	case *ast.SwitchStmt:
 		return true, n.Init == nil
 
@@ -145,19 +159,36 @@ func canUseNode(targetNode ast.Node) (initfield, ok bool) {
 		*ast.CommClause:
 		return false, true
 
-	// case *ast.File, *ast.FuncType, *ast.TypeSpec:
+	// case *ast.File, *ast.FuncType, *ast.TypeSpec, *ast.RangeStmt:
 	default:
 		return false, false
 	}
 }
 
-// findSafeScope traverses from minScope up to declScope in the scope hierarchy,
+// canUseBlockNode determines if a variable can be moved to a given AST node.
+// This is a restricted version that only considers block scopes, not init fields.
+//
+// Returns:
+//   - initField: false
+//   - ok: true if the node can be used as a move target
+func canUseBlockNode(targetNode ast.Node) (initfield, ok bool) {
+	switch targetNode.(type) {
+	case *ast.BlockStmt,
+		*ast.CaseClause,
+		*ast.CommClause:
+		return false, true
+	}
+
+	return false, false
+}
+
+// FindSafeScope traverses from minScope up to declScope in the scope hierarchy,
 // returning the tightest "safe" scope where a variable can be moved.
 //
 // "Safe" means the scope avoids moves that would change semantics:
 //   - Loop bodies: Variables used in multiple iterations must stay outside the loop
 //   - Function literals: Variables captured by closures must remain in the capturing scope
-func (s scopeAnalyzer) findSafeScope(declScope, minScope *types.Scope) *types.Scope {
+func (s ScopeAnalyzer) FindSafeScope(declScope, minScope *types.Scope) *types.Scope {
 	var targetScope *types.Scope
 
 	// The asymmetry between loops and functions requires a delayed update for FuncType:
@@ -202,16 +233,13 @@ func (s scopeAnalyzer) findSafeScope(declScope, minScope *types.Scope) *types.Sc
 		// Calculate parent, skip case scopes when the current is not in the body
 		parent := current.Parent()
 		switch n := s[parent].(type) {
-		case nil:
-			break
-
 		case *ast.CaseClause:
-			if n.Colon > current.Pos() {
+			if current.Pos() < n.Colon {
 				parent = parent.Parent()
 			}
 
 		case *ast.CommClause:
-			if n.Colon > current.Pos() {
+			if current.Pos() < n.Colon {
 				parent = parent.Parent()
 			}
 		}
@@ -224,17 +252,12 @@ func (s scopeAnalyzer) findSafeScope(declScope, minScope *types.Scope) *types.Sc
 	return nil
 }
 
-// contains checks if a token position falls within a range.
-func contains(left, right, pos token.Pos) bool {
-	return left <= pos && pos <= right
-}
-
-// commonAncestor finds the lowest common ancestor (LCA) of two scopes in the scope tree.
+// CommonAncestor finds the lowest common ancestor (LCA) of two scopes in the scope tree.
 //
 //   - declScope: The declaration scope (root of the subtree we're searching)
 //   - currentScope: First scope (the current minimum scope)
 //   - usageScope: Second scope (scope of the new use we're processing)
-func (s scopeAnalyzer) commonAncestor(declScope, currentScope, usageScope *types.Scope) *types.Scope {
+func (s ScopeAnalyzer) CommonAncestor(declScope, currentScope, usageScope *types.Scope) *types.Scope {
 	switch usageScope {
 	case currentScope, // Same scope as before: no change needed
 		declScope: // Tightest possible
@@ -243,14 +266,11 @@ func (s scopeAnalyzer) commonAncestor(declScope, currentScope, usageScope *types
 
 	// Phase 1: Build a path from currentScope to declScope
 	// This creates a set of all scopes in the path
-	path := make(map[*types.Scope]struct{})
-	for scope := range s.parentScopes(currentScope, declScope) {
-		path[scope] = struct{}{}
-	}
+	path := maps.Collect(s.parentScopes(declScope, currentScope))
 
 	// Phase 2: Walk from usageScope to declScope
 	// Return the first scope that exists in both paths (the LCA)
-	for scope := range s.parentScopes(usageScope, declScope) {
+	for scope := range s.parentScopes(declScope, usageScope) {
 		if _, ok := path[scope]; ok {
 			return scope
 		}
@@ -262,31 +282,77 @@ func (s scopeAnalyzer) commonAncestor(declScope, currentScope, usageScope *types
 }
 
 // parentScopes yields a sequence of scopes from start up to (but not including) root.
-func (s scopeAnalyzer) parentScopes(start, root *types.Scope) iter.Seq[*types.Scope] {
-	return func(yield func(*types.Scope) bool) {
-		for scope := start; scope != root; {
-			if !yield(scope) {
-				break
+func (s ScopeAnalyzer) parentScopes(root, start *types.Scope) iter.Seq2[*types.Scope, struct{}] {
+	return func(yield func(*types.Scope, struct{}) bool) {
+		for scope := start; scope != root; scope = s.parentScope(scope) {
+			if scope == nil { // Reached the [types.Universe] scope
+				panic("start scope is not in root")
 			}
 
-			// Calculate parent, skip case scopes when the current is not in the body
-			parent := scope.Parent()
-			switch n := s[parent].(type) {
-			case nil:
+			if !yield(scope, struct{}{}) {
 				break
-
-			case *ast.CaseClause:
-				if n.Colon > scope.Pos() {
-					parent = parent.Parent()
-				}
-
-			case *ast.CommClause:
-				if n.Colon > scope.Pos() {
-					parent = parent.Parent()
-				}
 			}
-
-			scope = parent
 		}
+	}
+}
+
+// Calculate parent, skip case scopes when the current scope is not in the body but the expression.
+func (s ScopeAnalyzer) parentScope(scope *types.Scope) *types.Scope {
+	parent := scope.Parent()
+	switch n := s[parent].(type) {
+	case *ast.CaseClause:
+		if n.Colon > scope.Pos() {
+			parent = parent.Parent()
+		}
+
+	case *ast.CommClause:
+		if n.Colon > scope.Pos() {
+			parent = parent.Parent()
+		}
+	}
+
+	return parent
+}
+
+// scopeName returns a human-readable name for the scope type.
+func scopeName(node ast.Node) string {
+	switch node.(type) {
+	// keep-sorted start newline_separated=yes
+	case *ast.BlockStmt:
+		return "block"
+
+	case *ast.CaseClause:
+		return "case"
+
+	case *ast.CommClause:
+		return "select case"
+
+	case *ast.File:
+		return "file"
+
+	case *ast.ForStmt:
+		return "for"
+
+	case *ast.FuncType:
+		return "function"
+
+	case *ast.IfStmt:
+		return "if"
+
+	case *ast.RangeStmt:
+		return "range"
+
+	case *ast.SwitchStmt:
+		return "switch"
+
+	case *ast.TypeSwitchStmt:
+		return "type switch"
+
+	case nil:
+		return "<nil>"
+
+	default:
+		return fmt.Sprintf("nested: %T", node)
+		// keep-sorted end
 	}
 }

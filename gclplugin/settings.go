@@ -16,30 +16,59 @@
 
 package gclplugin
 
-import scopeguard "fillmore-labs.com/scopeguard/analyzer"
+import (
+	"reflect"
+
+	scopeguard "fillmore-labs.com/scopeguard/analyzer"
+	"fillmore-labs.com/scopeguard/analyzer/level"
+)
 
 // Settings represent the configuration options for an instance of the [Plugin].
 type Settings struct {
-	MaxLines *int `json:"max-lines,omitzero"`
+	Scope        *level.Scope        `json:"scope,omitzero"`
+	Shadow       *level.Shadow       `json:"shadow,omitzero"`
+	NestedAssign *level.NestedAssign `json:"nested-assign,omitzero"`
+	MaxLines     *int                `json:"max-lines,omitzero"`
 }
 
-// options converts [Settings] into [scopeguard.Options] for the scopeguard analyzer.
-// It processes boolean settings and applies them only when explicitly set (non-nil).
-func options(settings Settings) scopeguard.Options {
-	optionConfigs := [...]struct {
-		f func(int) scopeguard.Option
-		v *int
-	}{
-		{scopeguard.WithMaxLines, settings.MaxLines},
+// Options converts [Settings] into [scopeguard.Options] for the scopeguard analyzer.
+// It processes settings and applies them only when explicitly set (non-nil).
+func (s Settings) Options() scopeguard.Options {
+	settings := mapping{
+		{scopeguard.WithScope, s.Scope},
+		{scopeguard.WithShadow, s.Shadow},
+		{scopeguard.WithNestedAssign, s.NestedAssign},
+		{scopeguard.WithMaxLines, s.MaxLines},
 	}
 
-	var options scopeguard.Options
+	return settings.options()
+}
 
-	for _, opt := range optionConfigs {
-		if opt.v != nil {
-			options = append(options, opt.f(*opt.v))
+type mapping []struct {
+	fun   any // func(T) scopeguard.Option
+	value any // *T
+}
+
+func (m mapping) options() scopeguard.Options {
+	var opts scopeguard.Options
+
+	for _, opt := range m {
+		// var v *T = opt.value
+		// if v == nil {
+		//	continue
+		// }
+		v := reflect.ValueOf(opt.value)
+		if v.IsNil() {
+			continue
 		}
+
+		// var f func(T) scopeguard.Option = opt.fun
+		// result := f(*v)
+		f := reflect.ValueOf(opt.fun)
+		result := f.Call([]reflect.Value{v.Elem()})[0].Interface().(scopeguard.Option)
+
+		opts = append(opts, result)
 	}
 
-	return options
+	return opts
 }

@@ -20,8 +20,10 @@ jobs:
     timeout-minutes: 10
     strategy:
       matrix:
-        go: ["1.25", "1.24"]
+        go: ["1.26", "1.25", "1.24"]
         include:
+          - go: "1.26"
+            go-version: "1.26.0-rc.1"
           - go: "1.25"
             go-version: "1.25.5"
             latest: true
@@ -45,13 +47,13 @@ jobs:
         uses: golangci/golangci-lint-action@1e7e51e771db61008b38414a730f564565cf7c20  # v9.2.0
         if: ${{ matrix.latest }}
         with:
-          version: v2.7.0
+          version: v2.7.2
           verify: false
       - name: 🔨 Test
         run: |
           go test -coverprofile=cover.out ./...
       - name: 🧑🏻‍💻 codecov
-        uses: codecov/codecov-action@5a1091511ad55cbe89839c7260b706298ca349f7  # v5.5.1
+        uses: codecov/codecov-action@671740ac38dd9b0130fbe1cec585b89eea48d3de  # v5.5.2
         if: ${{ matrix.latest }}
         with:
           files: ./cover.out

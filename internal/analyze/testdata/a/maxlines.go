@@ -14,22 +14,32 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-package analyzer
+package a
 
-import "golang.org/x/tools/go/analysis"
+import "fmt"
 
-// New creates a new instance of the scopeguard analyzer.
-// It allows for programmatic configuration using [Option]s, which is useful
-// for integrating the analyzer into other tools. For command-line use, the
-// pre-configured [Analyzer] variable is typically sufficient.
-func New(opts ...Option) *analysis.Analyzer {
-	o := makeOptions(opts)
+// Maximum lines that can be moved to if statement's Init field.
+func maxLines() {
+	x1 := func() int { // want "Variable 'x1' can be moved to tighter if scope"
+		i := 1
 
-	a := o.Analyzer()
-	registerFlags(o, &a.Flags)
+		return i
+	}()
+	{
+		if x1 > 0 {
+			fmt.Println(x1)
+		}
+	}
 
-	return a
+	x2 := func() int { // want "Variable 'x2' can be moved to tighter block scope"
+		i := 1
+		i++
+
+		return i
+	}()
+	{
+		if x2 > 0 {
+			fmt.Println(x2)
+		}
+	}
 }
-
-// Analyzer is a pre-configured *[analysis.Analyzer] for detecting variables that can be moved to tighter scopes.
-var Analyzer = New()

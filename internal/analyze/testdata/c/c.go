@@ -14,25 +14,53 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-package analyze
+package c
 
-import (
-	"context"
-	"go/ast"
-	"runtime/trace"
+import "fmt"
 
-	"golang.org/x/tools/go/ast/inspector"
+func foo() {
+	x := 1
+	a := 1
+	b := "abc"[x]
+	if x++; x > 0 {
+		fmt.Println(a, b)
+	}
+}
 
-	"fillmore-labs.com/scopeguard/analyzer/level"
-)
+func bar() {
+	var x int
+	incX := func() { x++ }
+	x, ok := 1, true
+	incX()
+	if ok {
+		fmt.Println(x)
+	}
+}
 
-// Usage collects variable declarations and tracks their usages to determine the minimum scope.
-func Usage(ctx context.Context, p Pass, scopes ScopeAnalyzer, body inspector.Cursor, funcType *ast.FuncType, scopeLevel level.Scope, shadowLevel level.Shadow, nestedAssign level.NestedAssign) (UsageResult, ShadowUsed, NestedAssigned) {
-	defer trace.StartRegion(ctx, "Usage").End()
+func baz() {
+	got := "got"
+	want := "want"
+	if got == want {
+		fmt.Println(got, want)
+	}
+}
 
-	uc := newUsageCollector(p, scopes, scopeLevel, shadowLevel, nestedAssign)
+func safe() {
+	x := 1 // want "Variable 'x' can be moved to tighter if scope"
+	const c = 2
+	{
+		type T int
+	}
+	if x > 0 {
+		fmt.Println(c)
+	}
+}
 
-	uc.inspectBody(body, funcType)
-
-	return uc.result()
+func unsafeVar() {
+	x := 0
+	incX := func() int { x++; return x }
+	y := incX()
+	if x > 0 {
+		fmt.Println(y)
+	}
 }

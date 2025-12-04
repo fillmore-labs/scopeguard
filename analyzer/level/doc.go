@@ -14,22 +14,5 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-package analyzer
-
-import "golang.org/x/tools/go/analysis"
-
-// New creates a new instance of the scopeguard analyzer.
-// It allows for programmatic configuration using [Option]s, which is useful
-// for integrating the analyzer into other tools. For command-line use, the
-// pre-configured [Analyzer] variable is typically sufficient.
-func New(opts ...Option) *analysis.Analyzer {
-	o := makeOptions(opts)
-
-	a := o.Analyzer()
-	registerFlags(o, &a.Flags)
-
-	return a
-}
-
-// Analyzer is a pre-configured *[analysis.Analyzer] for detecting variables that can be moved to tighter scopes.
-var Analyzer = New()
+// Package level defines configuration levels for the scopeguard analyzer.
+package level

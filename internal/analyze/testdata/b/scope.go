@@ -53,20 +53,6 @@ func nextEven(i int) int {
 	}
 }
 
-func skipScope2(a any) (ok bool) {
-	b, ok := a.(int) // want "Variable 'b' can be moved to tighter if scope"
-	if b == 1 {
-		fmt.Println(b)
-	}
-
-	c, ok := a.(string)
-	if c == "1" {
-		fmt.Println(c)
-	}
-
-	return
-}
-
 func nestedScope() {
 	x := 1
 	if y := 1; y != 1 {

@@ -22,49 +22,89 @@ import (
 	"runtime/trace"
 
 	"golang.org/x/tools/go/analysis"
+	"golang.org/x/tools/go/ast/edge"
+	"golang.org/x/tools/go/ast/inspector"
+
+	"fillmore-labs.com/scopeguard/analyzer/level"
 )
 
 // run executes the scopeguard analyzer's pipeline.
-func (o *Options) run(pass *analysis.Pass) (any, error) {
+func (o *Options) run(ap *analysis.Pass) (any, error) {
 	ctx := context.Background()
 
-	ctx, task := trace.NewTask(ctx, "scopeguard")
+	ctx, task := trace.NewTask(ctx, "ScopeGuard")
 	defer task.End()
 
-	p := newPass(pass)
+	p := Pass{Pass: ap}
 
-	in, err := p.inspector()
+	in, err := p.Inspector()
 	if err != nil {
 		return nil, err
 	}
 
 	// Build inverted scope->node map for bidirectional AST/scope navigation
-	scopes := p.scopeAnalyzer()
+	scopes := NewScopeAnalyzer(p)
 
-	g := make(generatedChecker)
+	// Remember the current file over all functions declared in it
+	var currentFile CurrentFile
 	// Loop over all function and method declarations
-	for c := range in.Root().Preorder((*ast.FuncDecl)(nil)) {
-		// One function declaration is always in a single file
-		file := enclosingFile(c)
+	in.Root().Inspect(
+		[]ast.Node{(*ast.File)(nil), (*ast.FuncDecl)(nil)},
+		func(c inspector.Cursor) bool {
+			switch n := c.Node().(type) {
+			case *ast.File:
+				currentFile = NewCurrentFile(p.Fset, n)
 
-		generated := g.isGenerated(file)
-		if generated && !o.Generated {
-			continue
-		}
+				return o.Generated || !currentFile.Generated()
 
-		// Stage 1: Collect all movable variable declarations and track variable uses
-		usageScopes := p.usage(ctx, scopes, c)
-		if usageScopes.scopeRanges == nil {
-			// No movable variable declarations
-			continue
-		}
+			case *ast.FuncDecl:
+				if n.Body == nil {
+					return false
+				}
 
-		// Stage 2: compute minimum safe scopes, select target nodes and resolve conflicts
-		targets := p.target(ctx, in, file, generated, scopes, usageScopes, o.MaxLines)
+				if !currentFile.Valid() {
+					p.ReportInternalError(n, "Function declaration %s without file info", n.Name.Name)
 
-		// Stage 3: Generate diagnostics with suggested fixes
-		p.report(ctx, in, targets)
-	}
+					return false
+				}
+
+				// Stage 1: Collect all movable variable declarations and track variable uses
+				body, funcType := c.ChildAt(edge.FuncDecl_Body, -1), n.Type
+				usageScopes, usedAfterShadow, nestedAssigned := Usage(ctx, p, scopes, body, funcType, o.ScopeLevel, o.ShadowLevel, o.NestedAssign)
+
+				// Report nested assignments
+				nestedAssigned.Report(ctx, p.Pass, currentFile)
+
+				// Report variables used after shadowed
+				usedAfterShadow.Report(ctx, p.Pass, in, currentFile)
+
+				if len(usageScopes.ScopeRanges) == 0 {
+					return false // No movable variable declarations
+				}
+
+				conservative := o.ScopeLevel == level.ScopeConservative
+
+				// Stage 2: compute minimum safe scopes, select target nodes and resolve conflicts
+				targets := Targets(ctx, p, in, TargetOptions{
+					ScopeAnalyzer: scopes,
+					CurrentFile:   currentFile,
+					UsageResult:   usageScopes,
+					MaxLines:      o.MaxLines,
+					Conservative:  conservative,
+				})
+
+				// Stage 3: Generate diagnostics with suggested fixes
+				Report(ctx, p, in, targets, conservative)
+
+				return true
+
+			default:
+				p.ReportInternalError(n, "Unexpected node type: %T", n)
+
+				return false
+			}
+		},
+	)
 
 	return nil, nil
 }

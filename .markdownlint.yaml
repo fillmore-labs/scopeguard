@@ -8,3 +8,7 @@ line-length:
   line_length: 120
 ol-prefix:
   style: ordered
+no-blanks-blockquote:
+  enabled: false
+no-inline-html:
+  allowed_elements: ["details", "summary", "p"]

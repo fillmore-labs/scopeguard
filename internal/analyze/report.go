@@ -29,18 +29,23 @@ import (
 	"golang.org/x/tools/go/ast/inspector"
 )
 
-// report generates and emits diagnostics for variables that can be moved to tighter scopes.
+// Report generates and emits diagnostics for variables that can be moved to tighter scopes.
 //
 // This is the final phase of the analyzer pipeline. For each move target identified by the
 // target phase, this function:
 //  1. Constructs a diagnostic message describing what can be moved and where
 //  2. Generates a suggested fix with text edits to perform the move (if possible)
 //  3. Reports the diagnostic to the analysis framework
-func (p pass) report(ctx context.Context, in *inspector.Inspector, targets targetResult) {
-	defer trace.StartRegion(ctx, "report").End()
+func Report(ctx context.Context, p Pass, in *inspector.Inspector, targets TargetResult, conservative bool) {
+	defer trace.StartRegion(ctx, "Report").End()
 
-	for _, move := range targets.move {
-		c := in.At(move.decl)
+	for _, move := range targets.Move {
+		movable := move.Status.Movable()
+		if conservative && !movable {
+			continue
+		}
+
+		c := in.At(move.Decl)
 		node := c.Node()
 
 		diagnostic := analysis.Diagnostic{
@@ -48,10 +53,10 @@ func (p pass) report(ctx context.Context, in *inspector.Inspector, targets targe
 			End: node.End(),
 		}
 
-		diagnostic.Message, diagnostic.Related = createMessage(node, move.targetNode, move.unused)
+		diagnostic.Message, diagnostic.Related = createMessage(node, move.TargetNode, move.Status, move.Unused)
 
-		if !move.dontFix {
-			if edits := p.createEdits(c, move.targetNode, move.unused); len(edits) > 0 {
+		if movable {
+			if edits := createEdits(p, c, move.TargetNode, move.Unused); len(edits) > 0 {
 				diagnostic.SuggestedFixes = []analysis.SuggestedFix{{Message: diagnostic.Message, TextEdits: edits}}
 			}
 		}
@@ -61,17 +66,17 @@ func (p pass) report(ctx context.Context, in *inspector.Inspector, targets targe
 }
 
 // createMessage constructs the diagnostic message and related information.
-func createMessage(node, target ast.Node, unused []string) (message string, related []analysis.RelatedInformation) {
+func createMessage(node, target ast.Node, status MoveStatus, unused []string) (message string, related []analysis.RelatedInformation) {
 	switch target {
 	case nil:
-		format := "Variable %s is unused and can be removed"
+		format := "Variable %s is unused and can be removed (sg:%s)"
 		if len(unused) > 1 {
-			format = "Variables %s are unused and can be removed"
+			format = "Variables %s are unused and can be removed (sg:%s)"
 		}
 
 		allNames := concatNames(unused)
 
-		return fmt.Sprintf(format, allNames), nil
+		return fmt.Sprintf(format, allNames, status), nil
 
 	default:
 		varNames := collectNames(node)
@@ -79,16 +84,16 @@ func createMessage(node, target ast.Node, unused []string) (message string, rela
 			varNames = slices.DeleteFunc(varNames, func(name string) bool { return slices.Contains(unused, name) })
 		}
 
-		format := "Variable %s can be moved to tighter %s scope"
+		format := "Variable %s can be moved to tighter %s scope (sg:%s)"
 		if len(varNames) > 1 {
-			format = "Variables %s can be moved to tighter %s scope"
+			format = "Variables %s can be moved to tighter %s scope (sg:%s)"
 		}
 
 		allNames := concatNames(varNames)
-		scopeType := scopeTypeName(target)
+		targetName := scopeName(target)
 
-		return fmt.Sprintf(format, allNames, scopeType),
-			[]analysis.RelatedInformation{{Pos: target.Pos(), Message: fmt.Sprintf("To this %s scope", scopeType)}}
+		return fmt.Sprintf(format, allNames, targetName, status),
+			[]analysis.RelatedInformation{{Pos: target.Pos(), Message: fmt.Sprintf("To this %s scope", targetName)}}
 	}
 }
 

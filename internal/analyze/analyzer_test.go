@@ -19,6 +19,7 @@ package analyze_test
 import (
 	"testing"
 
+	"fillmore-labs.com/scopeguard/analyzer/level"
 	. "fillmore-labs.com/scopeguard/internal/analyze"
 
 	"golang.org/x/tools/go/analysis/analysistest"
@@ -31,6 +32,7 @@ func TestAnalyzer(t *testing.T) {
 
 	o := DefaultOptions()
 	o.Generated = true
+	o.MaxLines = 5
 
 	analysistest.RunWithSuggestedFixes(t, testdata, o.Analyzer(), "./a")
 }
@@ -41,4 +43,15 @@ func TestAnalyzerB(t *testing.T) {
 	testdata := analysistest.TestData()
 
 	analysistest.Run(t, testdata, DefaultOptions().Analyzer(), "./b")
+}
+
+func TestAnalyzerC(t *testing.T) {
+	t.Parallel()
+
+	testdata := analysistest.TestData()
+
+	o := DefaultOptions()
+	o.ScopeLevel = level.ScopeConservative
+
+	analysistest.RunWithSuggestedFixes(t, testdata, o.Analyzer(), "./c")
 }

@@ -14,25 +14,41 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-package analyze
+package b
 
-import (
-	"context"
-	"go/ast"
-	"runtime/trace"
+func nested() {
+	var err error
 
-	"golang.org/x/tools/go/ast/inspector"
+	{
+		err := error(nil)
+		_ = err
+	}
 
-	"fillmore-labs.com/scopeguard/analyzer/level"
-)
+	err = func() error {
+		err = error(nil) // want "Nested reassignment of variable 'err'"
+		return err
+	}()
 
-// Usage collects variable declarations and tracks their usages to determine the minimum scope.
-func Usage(ctx context.Context, p Pass, scopes ScopeAnalyzer, body inspector.Cursor, funcType *ast.FuncType, scopeLevel level.Scope, shadowLevel level.Shadow, nestedAssign level.NestedAssign) (UsageResult, ShadowUsed, NestedAssigned) {
-	defer trace.StartRegion(ctx, "Usage").End()
+	_ = err
+}
 
-	uc := newUsageCollector(p, scopes, scopeLevel, shadowLevel, nestedAssign)
+func nestedOk() {
+	var err error
 
-	uc.inspectBody(body, funcType)
+	{
+		err := error(nil)
+		_ = err
+	}
 
-	return uc.result()
+	err = func() error {
+		err := error(nil)
+		return err
+	}()
+
+	_ = func() error {
+		err := error(nil)
+		return err
+	}
+
+	_ = err
 }
