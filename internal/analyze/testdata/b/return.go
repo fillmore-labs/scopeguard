@@ -14,24 +14,23 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-package analyze
+package b
 
-// Options represent configuration options for the scopeguard analyzer.
-type Options struct {
-	// Generated specifies whether to include analysis of generated files.
-	Generated bool
+import "fmt"
 
-	// MaxLines specifies the maximum number of lines a declaration can span to be considered for moving.
-	// If set to -1 (default), there is no limit.
-	MaxLines int
-}
+func recoveredReturn() {
+	f := func() (int, bool) { return 1, true }
 
-// DefaultOptions initializes and returns a new Options instance with default values.
-func DefaultOptions() *Options {
-	o := &Options{
-		Generated: false,
-		MaxLines:  -1,
-	}
+	// This function has a named result parameter, but the usage is not detected
+	v := func() (r int) {
+		defer func() { _ = recover() }()
+		r, ok := f() //nolint:scopeguard usage of r not detected
+		if ok {
+			_ = r // use r
+		}
 
-	return o
+		panic("recovered")
+	}()
+
+	fmt.Println(v)
 }

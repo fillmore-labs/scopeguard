@@ -14,24 +14,39 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-package analyze
+package a
 
-// Options represent configuration options for the scopeguard analyzer.
-type Options struct {
-	// Generated specifies whether to include analysis of generated files.
-	Generated bool
+import (
+	"fmt"
+	"strconv"
+)
 
-	// MaxLines specifies the maximum number of lines a declaration can span to be considered for moving.
-	// If set to -1 (default), there is no limit.
-	MaxLines int
+// Redefinition - would be broken by fix
+func goStringer() {
+	var b fmt.Stringer = B{"test"}
+	s := b.String() // want "Variable 's' can be moved to tighter if scope"
+
+	if b, ok := b.(fmt.GoStringer); ok {
+		if s == b.GoString() {
+			fmt.Println("equal")
+		}
+	}
 }
 
-// DefaultOptions initializes and returns a new Options instance with default values.
-func DefaultOptions() *Options {
-	o := &Options{
-		Generated: false,
-		MaxLines:  -1,
+type I int
+
+func (i I) String() string { return strconv.Itoa(int(i)) }
+
+const two = 2
+
+// Inherited type - would be broken by fix
+func intString() {
+	i, j := I(4), 4 // want "Variables 'i' and 'j' can be moved to tighter block scope"
+	i, k := two, 2
+
+	if k != 0 {
+		fmt.Println(i, j)
 	}
 
-	return o
+	fmt.Println(i.String(), k)
 }

@@ -14,13 +14,13 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-package a
+package b
 
 import "fmt"
 
 // Same-type redeclarations - first declaration should be removable
 func sameType() {
-	var x int // want "Variable 'x' is unused and can be removed"
+	var x int
 
 	x, y := 1, 2
 	if y > 0 {
@@ -38,7 +38,7 @@ func interfaceToConcreteReverse() {
 		Foo() bool
 	}
 
-	var err error // want "Variable 'err' is unused and can be removed"
+	var err error
 
 	a, err := func() (int, error) {
 		return 1, nil
@@ -66,7 +66,7 @@ func multiVarDecl() {
 		Foo() bool
 	}
 
-	var x, y error // x is unused in first decl, but y needs the type // want "Variables 'x' and 'y' are unused and can be removed"
+	var x, y error // x is unused in first decl, but y needs the type
 
 	// x is used later with same type (safe to remove x from first decl)
 	a, x := func() (int, error) { return 1, nil }()
@@ -78,4 +78,14 @@ func multiVarDecl() {
 
 	y, w := func() (error, int) { return nil, 2 }()
 	fmt.Println(y, w)
+}
+
+func namedReturn() (ok bool) {
+	var x int
+
+	x, y, ok := 1, 2, true
+
+	fmt.Print(x, y)
+
+	return
 }

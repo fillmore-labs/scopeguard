@@ -25,15 +25,15 @@ import (
 	"golang.org/x/tools/go/ast/inspector"
 )
 
-// pass wraps [*analysis.Pass] with helper methods.
+// pass wraps *[analysis.Pass] with helper methods.
 type pass struct {
-	pass *analysis.Pass
+	*analysis.Pass
 }
 
 // newPass creates a pass wrapper from an [*analysis.Pass].
 func newPass(ap *analysis.Pass) pass {
 	return pass{
-		pass: ap,
+		Pass: ap,
 	}
 }
 
@@ -44,7 +44,7 @@ func newPass(ap *analysis.Pass) pass {
 //
 // Returns an error if the [inspect.Analyzer] result is missing.
 func (p pass) inspector() (*inspector.Inspector, error) {
-	in, ok := p.pass.ResultOf[inspect.Analyzer].(*inspector.Inspector)
+	in, ok := p.ResultOf[inspect.Analyzer].(*inspector.Inspector)
 	if !ok {
 		return nil, fmt.Errorf("scopeguard: %s %w", inspect.Analyzer.Name, ErrResultMissing)
 	}
@@ -57,7 +57,22 @@ func (p pass) inspector() (*inspector.Inspector, error) {
 // Requires field is not properly set.
 var ErrResultMissing = errors.New("analyzer result missing")
 
+// reportInternalError reports an internal error diagnostic.
+// These errors indicate bugs in the analyzer logic rather than issues in the user's code.
 func (p pass) reportInternalError(rng analysis.Range, format string, args ...any) {
-	msg := fmt.Sprintf("Internal Error: "+format, args...)
-	p.pass.Report(analysis.Diagnostic{Pos: rng.Pos(), End: rng.End(), Message: msg})
+	msg := []byte("Internal Error: ")
+	msg = fmt.Appendf(msg, format, args...)
+
+	p.Report(analysis.Diagnostic{Pos: rng.Pos(), End: rng.End(), Message: string(msg)})
+}
+
+// reportInvalidTarget reports an internal error if a target Init field is occupied.
+func (p pass) reportInvalidTarget(init, source analysis.Range) {
+	// this should never happen
+	p.Report(analysis.Diagnostic{
+		Pos:     init.Pos(),
+		End:     init.End(),
+		Message: "Internal error: Init is not empty",
+		Related: []analysis.RelatedInformation{{Pos: source.Pos(), End: source.End(), Message: "Move candidate"}},
+	})
 }

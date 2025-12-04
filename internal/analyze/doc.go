@@ -14,17 +14,11 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-// Package analyzer implements the scopeguard static analysis pass.
+// Package analyze implements the scopeguard static analysis pass.
 //
 // # Overview
 //
-// Scopeguard detects Go variables that can be moved to tighter scopes and
-// suggests automatic fixes. This encourages idiomatic Go code by:
-//
-//   - Reducing scope pollution (variables exist only where needed)
-//   - Making variable lifetime explicit (clearer intent)
-//   - Preventing accidental variable reuse across scopes
-//   - Enabling more effective static analysis by other tools
+// ScopeGuard detects Go variables that can be moved to tighter scopes.
 //
 // # Example
 //
@@ -49,12 +43,11 @@
 //
 // # Architecture
 //
-// The analyzer uses a four-stage pipeline:
+// The analyzer uses a three-stage pipeline:
 //
-//  1. Declarations: Collect variable declarations (both `:=` and `var` statements)
-//  2. Usage: Track variable uses and compute minimum safe scope (LCA algorithm)
-//  3. Target: Select target AST nodes and resolve conflicts (e.g., Init field conflicts)
-//  4. Report: Generate diagnostics with suggested fixes
+//  1. Usage: Collect variable declarations (both `:=` and `var` statements) and compute minimum usage scope
+//  2. Target: Select target AST nodes and resolve conflicts (e.g., Init field conflicts)
+//  3. Report: Generate diagnostics with suggested fixes
 //
 // # Supported Target Scopes
 //
@@ -69,10 +62,8 @@
 //
 //   - Loop bodies: Variables can move TO a for loop's Init field, but NOT into
 //     the loop body (which would change the variable's lifetime)
-//   - Range loops: Variables CANNOT move into range loop scope (no Init field)
 //   - Function literals: Variables CANNOT cross function boundaries (would
 //     change closure capture semantics)
-//   - Select cases: Variables defined in select case statements are excluded
 //
 // # Current Limitations
 //

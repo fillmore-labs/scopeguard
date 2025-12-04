@@ -54,7 +54,7 @@ func nextEven(i int) int {
 }
 
 func skipScope2(a any) (ok bool) {
-	b, ok := a.(int)
+	b, ok := a.(int) // want "Variable 'b' can be moved to tighter if scope"
 	if b == 1 {
 		fmt.Println(b)
 	}
@@ -88,5 +88,26 @@ func selectCase() {
 		if true {
 			fmt.Println(y)
 		}
+	}
+}
+
+func caseClause() {
+	ch := make(chan func())
+	x := make(chan struct{})
+	select {
+	case ch <- func() {
+		<-x
+	}:
+	}
+}
+
+func caseClause2() {
+	ch := make(chan func())
+	x := make(chan struct{})
+	select {
+	case ch <- func() {
+		<-x
+	}:
+		x <- struct{}{}
 	}
 }

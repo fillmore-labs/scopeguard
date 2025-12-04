@@ -18,35 +18,13 @@ package analyze
 
 import (
 	"context"
+	"go/ast"
 	"runtime/trace"
 
 	"golang.org/x/tools/go/analysis"
 )
 
-// run executes the scopeguard analyzer's four-stage pipeline.
-//
-// Pipeline stages:
-//
-//  1. declarations: Collects all := and var declarations in the analyzed code
-//     Returns: varDecls map (variable -> declaration info)
-//
-//  2. usage: Tracks where each variable is used and computes the tightest scope
-//     that contains all uses (the lowest common ancestor in scope tree)
-//     Mutates: decls[v].targetScope with computed minimum scope
-//
-//  3. target: Selects concrete AST nodes to move declarations to, applying safety
-//     constraints and resolving Init field conflicts
-//     Returns: []moveTarget (the sorted list of moves to perform)
-//
-//  4. report: Generates diagnostics with suggested fixes for each move target
-//     Side effect: Calls pass.Report() to emit diagnostics
-//
-// The analyzer uses runtime/trace for performance profiling. Use:
-//
-//	go test -trace=trace.out ./analyzer/...
-//	go tool trace trace.out
-//
-// to analyze performance characteristics.
+// run executes the scopeguard analyzer's pipeline.
 func (o *Options) run(pass *analysis.Pass) (any, error) {
 	ctx := context.Background()
 
@@ -63,27 +41,29 @@ func (o *Options) run(pass *analysis.Pass) (any, error) {
 	// Build inverted scope->node map for bidirectional AST/scope navigation
 	scopes := p.scopeAnalyzer()
 
-	// Stage 1: Collect all movable variable declarations
-	decls, err := p.declarations(ctx, in, o.Generated)
-	if err != nil {
-		return nil, err
-	}
+	g := make(generatedChecker)
+	// Loop over all function and method declarations
+	for c := range in.Root().Preorder((*ast.FuncDecl)(nil)) {
+		// One function declaration is always in a single file
+		file := enclosingFile(c)
 
-	// Stage 2: Track variable uses and compute minimum safe scopes
-	usageScopes, err := p.usage(ctx, in, scopes, decls)
-	if err != nil {
-		return nil, err
-	}
+		generated := g.isGenerated(file)
+		if generated && !o.Generated {
+			continue
+		}
 
-	// Stage 3: Select target nodes and resolve conflicts
-	targets, err := p.target(ctx, in, scopes, usageScopes)
-	if err != nil {
-		return nil, err
-	}
+		// Stage 1: Collect all movable variable declarations and track variable uses
+		usageScopes := p.usage(ctx, scopes, c)
+		if usageScopes.scopeRanges == nil {
+			// No movable variable declarations
+			continue
+		}
 
-	// Stage 4: Generate diagnostics with suggested fixes
-	if err := p.report(ctx, in, targets, o.Generated); err != nil {
-		return nil, err
+		// Stage 2: compute minimum safe scopes, select target nodes and resolve conflicts
+		targets := p.target(ctx, in, file, generated, scopes, usageScopes, o.MaxLines)
+
+		// Stage 3: Generate diagnostics with suggested fixes
+		p.report(ctx, in, targets)
 	}
 
 	return nil, nil

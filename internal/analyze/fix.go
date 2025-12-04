@@ -32,42 +32,25 @@ import (
 var rawcfg = &printer.Config{Mode: printer.RawFormat}
 
 // createEdits creates a suggested fix to move a variable declaration to a tighter scope.
-//
-// This function orchestrates the fix generation by:
-//  1. Determining insertion location via getInsertInfo
-//  2. Preparing the statement (wrapping composite literals if needed)
-//  3. Building the text edits to perform the move
-//
-// Parameters:
-//   - c: inspector.Cursor pointing to the declaration statement to move
-//   - targetNode: The AST node representing the target scope (IfStmt, ForStmt, BlockStmt, etc.)
-//   - message: The diagnostic message to include in the suggested fix
-//
-// Returns:
-//   - analysis.SuggestedFix: The fix with text edits
-//   - bool: true if a valid fix was generated, false otherwise
-func (p pass) createEdits(
-	c inspector.Cursor,
-	targetNode ast.Node,
-) []analysis.TextEdit {
+func (p pass) createEdits(c inspector.Cursor, targetNode ast.Node, unused []string) []analysis.TextEdit {
 	stmt := c.Node()
 
 	// Get the bounds of the original statement (including comments)
-	pos, end := p.getStatementBounds(stmt)
+	pos, end := statementBounds(stmt)
 
 	// Handle delete-only case (unused variable removal)
 	if targetNode == nil {
-		return []analysis.TextEdit{{Pos: pos, End: end, NewText: []byte{}}}
+		return removeUnused(stmt, unused)
 	}
 
 	// Determine where and how to insert the declaration
-	info, ok := p.calcInsertInfo(targetNode, stmt)
-	if !ok {
+	info := p.calcInsertInfo(targetNode, stmt)
+	if !info.pos.IsValid() {
 		return nil
 	}
 
 	// Prepare the statement for insertion (wrap composite literals if moving to Init field)
-	stmtToInsert := p.prepareStatement(c, stmt, info.moveToInit)
+	stmtToInsert := prepareStatement(c, stmt, info.moveToInit, unused)
 
 	// Build the declaration text with appropriate formatting
 	var buf bytes.Buffer
@@ -77,7 +60,7 @@ func (p pass) createEdits(
 		buf.WriteByte(' ')
 	}
 
-	if err := rawcfg.Fprint(&buf, p.pass.Fset, stmtToInsert); err != nil {
+	if err := rawcfg.Fprint(&buf, p.Fset, stmtToInsert); err != nil {
 		p.reportInternalError(stmt, "Can't render statement: %s", err)
 		return nil
 	}
@@ -98,6 +81,106 @@ func (p pass) createEdits(
 	return edits
 }
 
+// removeUnused generates text edits to delete or replace unused variables with the blank identifier '_'.
+func removeUnused(stmt ast.Node, unused []string) []analysis.TextEdit {
+	switch n := stmt.(type) {
+	case *ast.AssignStmt:
+		return removeUnusedAssign(n, unused)
+
+	case *ast.DeclStmt:
+		return removeUnusedDecl(n, unused)
+	}
+
+	return nil
+}
+
+// removeUnusedAssign handles removal of unused variables from assignment statements (:= and =).
+func removeUnusedAssign(n *ast.AssignStmt, unused []string) []analysis.TextEdit {
+	if n.Tok != token.DEFINE && n.Tok != token.ASSIGN {
+		return nil
+	}
+
+	var edits []analysis.TextEdit
+
+	underscore := []byte("_")
+	all := true
+
+	for id := range allAssigned(n) {
+		if !slices.Contains(unused, id.Name) {
+			all = false
+			continue
+		}
+
+		edits = append(edits, analysis.TextEdit{Pos: id.Pos(), End: id.End(), NewText: underscore})
+	}
+
+	if all && n.Tok == token.DEFINE {
+		// Change := to = when all identifiers are removed
+		edits = append(edits, analysis.TextEdit{Pos: n.TokPos, End: n.TokPos + 1})
+	}
+
+	return edits
+}
+
+// removeUnusedDecl handles removal of unused variables from var declaration statements.
+func removeUnusedDecl(n *ast.DeclStmt, unused []string) []analysis.TextEdit {
+	decl, ok := n.Decl.(*ast.GenDecl)
+	if !ok || decl.Tok != token.VAR {
+		return nil
+	}
+
+	var (
+		edits       []analysis.TextEdit
+		allSpecs    = true
+		removeSpecs []*ast.ValueSpec
+		underscore  = []byte("_")
+	)
+
+	for _, spec := range decl.Specs {
+		vspec, ok := spec.(*ast.ValueSpec)
+		if !ok {
+			continue
+		}
+
+		all := true
+
+		var remove []*ast.Ident
+
+		for _, id := range vspec.Names {
+			if id.Name == "_" {
+				continue // blank identifier
+			}
+
+			if !slices.Contains(unused, id.Name) {
+				all = false
+				continue
+			}
+
+			remove = append(remove, id)
+		}
+
+		if all && len(vspec.Values) == 0 {
+			removeSpecs = append(removeSpecs, vspec)
+		} else {
+			allSpecs = false
+
+			for _, id := range remove {
+				edits = append(edits, analysis.TextEdit{Pos: id.Pos(), End: id.End(), NewText: underscore})
+			}
+		}
+	}
+
+	if allSpecs {
+		edits = append(edits, analysis.TextEdit{Pos: decl.Pos(), End: decl.End()})
+	} else {
+		for _, vspec := range removeSpecs {
+			edits = append(edits, analysis.TextEdit{Pos: vspec.Pos(), End: vspec.End()})
+		}
+	}
+
+	return edits
+}
+
 // insertInfo contains all information needed to insert a declaration at a target location.
 type insertInfo struct {
 	pos            token.Pos           // Where to insert the declaration
@@ -109,98 +192,94 @@ type insertInfo struct {
 
 // calcInsertInfo determines where and how to insert a declaration based on the target node type.
 //
-// This function encapsulates all the logic for determining insertion position and formatting
-// requirements for different target scope types.
-//
-// Parameters:
-//   - targetNode: The AST node representing the target scope (IfStmt, ForStmt, BlockStmt, etc.)
-//   - stmt: The declaration statement being moved (for validation)
-//
-// Returns:
-//   - insertInfo: Information about where and how to insert the declaration
-//   - bool: true if a valid insert location was determined, false otherwise
-func (p pass) calcInsertInfo(targetNode, stmt ast.Node) (insertInfo, bool) {
+// Returns information about where and how to insert the declaration.
+func (p pass) calcInsertInfo(targetNode, stmt ast.Node) insertInfo {
 	switch n := targetNode.(type) {
 	case *ast.IfStmt:
-		if !p.validTarget(n.Init, stmt) {
-			return insertInfo{}, false
+		if n.Init != nil {
+			p.reportInvalidTarget(n.Init, stmt)
+			return insertInfo{pos: token.NoPos}
 		}
 
 		return insertInfo{
 			pos:            n.If + 2, // After "if"
 			moveToInit:     true,
 			needsSemicolon: true,
-		}, true
+		}
 
 	case *ast.ForStmt:
-		if !p.validTarget(n.Init, stmt) {
-			return insertInfo{}, false
+		if n.Init != nil {
+			p.reportInvalidTarget(n.Init, stmt)
+			return insertInfo{pos: token.NoPos}
 		}
 
-		info := insertInfo{
-			pos:            n.For + 3, // After "for"
-			moveToInit:     true,
-			needsSemicolon: n.Post == nil, // While-style loop needs extra semicolon
-		}
-		// While-style for loop: add semicolon before opening brace
+		var extraEdits []analysis.TextEdit
 		if n.Post == nil && n.Body != nil && n.Body.Lbrace.IsValid() {
-			info.extraEdits = []analysis.TextEdit{{
+			// While-style for loop: add semicolon before opening brace
+			extraEdits = []analysis.TextEdit{{
 				Pos:     n.Body.Lbrace,
 				NewText: []byte("; "),
 			}}
 		}
 
-		return info, true
+		return insertInfo{
+			pos:            n.For + 3, // After "for"
+			moveToInit:     true,
+			needsSemicolon: n.Post == nil, // While-style loop needs extra semicolon
+			extraEdits:     extraEdits,
+		}
 
 	case *ast.SwitchStmt:
-		if !p.validTarget(n.Init, stmt) {
-			return insertInfo{}, false
+		if n.Init != nil {
+			p.reportInvalidTarget(n.Init, stmt)
+			return insertInfo{pos: token.NoPos}
 		}
 
 		return insertInfo{
 			pos:            n.Switch + 6, // After "switch"
 			moveToInit:     true,
 			needsSemicolon: true,
-		}, true
+		}
 
 	case *ast.TypeSwitchStmt:
-		if !p.validTarget(n.Init, stmt) {
-			return insertInfo{}, false
+		if n.Init != nil {
+			p.reportInvalidTarget(n.Init, stmt)
+			return insertInfo{pos: token.NoPos}
 		}
 
 		return insertInfo{
 			pos:            n.Switch + 6, // After "switch"
 			moveToInit:     true,
 			needsSemicolon: true,
-		}, true
+		}
 
 	case *ast.BlockStmt:
 		return insertInfo{
 			pos:          n.Lbrace + 1, // After the opening brace
 			needsNewline: true,
-		}, true
+		}
 
 	case *ast.CaseClause:
 		return insertInfo{
 			pos:          n.Colon + 1, // After the ':'
 			needsNewline: true,
-		}, true
+		}
 
 	case *ast.CommClause:
 		return insertInfo{
 			pos:          n.Colon + 1, // After the ':'
 			needsNewline: true,
-		}, true
+		}
 
 	default:
-		return insertInfo{}, false
+		return insertInfo{pos: token.NoPos}
 	}
 }
 
-// getStatementBounds returns the start and end positions of a statement, including comments.
+// statementBounds returns the start and end positions of a statement, including comments.
 //
 // For var declarations, this includes doc comments before the declaration and line comments after it.
-func (p pass) getStatementBounds(stmt ast.Node) (pos, end token.Pos) {
+func statementBounds(stmt ast.Node) (pos, end token.Pos) {
 	pos, end = stmt.Pos(), stmt.End()
 
 	if declStmt, ok := stmt.(*ast.DeclStmt); ok {
@@ -223,53 +302,141 @@ func (p pass) getStatementBounds(stmt ast.Node) (pos, end token.Pos) {
 }
 
 // prepareStatement prepares a statement for insertion at a target location.
-//
-// When moving to Init fields, composite literals must be wrapped in parentheses
-// to avoid parsing ambiguity with block braces.
-func (p pass) prepareStatement(c inspector.Cursor, stmt ast.Node, moveToInit bool) ast.Node {
-	// Only need to prepare assignment statements when moving to Init fields
-	assignStmt, ok := stmt.(*ast.AssignStmt)
-	if !ok || !moveToInit {
+func prepareStatement(c inspector.Cursor, stmt ast.Node, moveToInit bool, unused []string) ast.Node {
+	switch stmt := stmt.(type) {
+	case *ast.AssignStmt:
+		return prepareAssign(c, stmt, moveToInit, unused)
+
+	case *ast.DeclStmt:
+		return prepareDecl(stmt, unused)
+
+	default:
+		return stmt
+	}
+}
+
+// prepareAssign prepares an assignment statement for insertion, handling composite literal wrapping
+// and unused variable replacement.
+func prepareAssign(c inspector.Cursor, stmt *ast.AssignStmt, moveToInit bool, unused []string) ast.Node {
+	if stmt.Tok != token.DEFINE && stmt.Tok != token.ASSIGN {
 		return stmt
 	}
 
-	// Check which RHS expressions are composite literals
-	cls := compositeLits(c)
-	if len(cls) == 0 {
+	var cls []int
+	if moveToInit {
+		// Check which RHS expressions are composite literals
+		cls = compositeLits(c)
+	}
+
+	if len(unused) == 0 && len(cls) == 0 {
 		return stmt
 	}
 
-	// Wrap composite literals in parentheses
-	rhs := make([]ast.Expr, 0, len(assignStmt.Rhs))
-	for i, expr := range assignStmt.Rhs {
-		if slices.Contains(cls, i) {
-			expr = &ast.ParenExpr{X: expr}
+	var lhs []ast.Expr
+	if len(unused) > 0 {
+		lhs = make([]ast.Expr, len(stmt.Lhs))
+		for i, expr := range stmt.Lhs {
+			if id, ok := expr.(*ast.Ident); ok && slices.Contains(unused, id.Name) {
+				expr = &ast.Ident{NamePos: id.NamePos, Name: "_"}
+			}
+
+			lhs[i] = expr
 		}
+	} else {
+		lhs = stmt.Lhs
+	}
 
-		rhs = append(rhs, expr)
+	// When moving to Init fields, composite literals must be wrapped in parentheses
+	// to avoid parsing ambiguity with block braces.
+	var rhs []ast.Expr
+	if len(cls) > 0 {
+		// Wrap composite literals in parentheses
+		rhs = make([]ast.Expr, len(stmt.Rhs))
+		for i, expr := range stmt.Rhs {
+			if slices.Contains(cls, i) {
+				expr = &ast.ParenExpr{X: expr}
+			}
+
+			rhs[i] = expr
+		}
+	} else {
+		rhs = stmt.Rhs
 	}
 
 	return &ast.AssignStmt{
-		Lhs:    assignStmt.Lhs,
-		TokPos: assignStmt.TokPos,
-		Tok:    assignStmt.Tok,
+		Lhs:    lhs,
+		TokPos: stmt.TokPos,
+		Tok:    stmt.Tok,
 		Rhs:    rhs,
+	}
+}
+
+// prepareDecl prepares a declaration statement for insertion, filtering out unused value specs.
+func prepareDecl(stmt *ast.DeclStmt, unused []string) ast.Node {
+	if len(unused) == 0 {
+		return stmt
+	}
+
+	decl, ok := stmt.Decl.(*ast.GenDecl)
+	if !ok || decl.Tok != token.VAR {
+		return stmt
+	}
+
+	specs := make([]ast.Spec, 0, len(decl.Specs))
+	for _, spec := range decl.Specs {
+		vspec, ok := spec.(*ast.ValueSpec)
+		if !ok {
+			specs = append(specs, spec)
+
+			continue
+		}
+
+		hasValues := len(vspec.Values) > 0
+
+		names := make([]*ast.Ident, 0, len(vspec.Names))
+		for _, id := range vspec.Names {
+			if slices.Contains(unused, id.Name) {
+				if !hasValues {
+					continue
+				}
+
+				id = &ast.Ident{NamePos: id.NamePos, Name: "_"}
+			}
+
+			names = append(names, id)
+		}
+
+		if len(names) > 0 {
+			specs = append(specs,
+				&ast.ValueSpec{
+					Doc:     vspec.Doc,
+					Names:   names,
+					Type:    vspec.Type,
+					Values:  vspec.Values,
+					Comment: vspec.Comment,
+				})
+		}
+	}
+
+	if len(specs) == 0 {
+		return &ast.EmptyStmt{Implicit: true}
+	}
+
+	return &ast.DeclStmt{
+		Decl: &ast.GenDecl{
+			Doc:    decl.Doc,
+			TokPos: decl.TokPos,
+			Tok:    decl.Tok,
+			Lparen: decl.Lparen,
+			Specs:  specs,
+			Rparen: decl.Rparen,
+		},
 	}
 }
 
 // compositeLits identifies which RHS expressions in an assignment are [composite literals] that need parenthesization.
 //
-// When a composite literal appears in an Init field (if/for/switch), the opening brace can be mistaken
-// for the block's opening brace, causing a parse error. Go requires parentheses to disambiguate.
-//
-// This function detects which RHS expressions are composite literals, so generateFix can wrap them
-// in parentheses when moving declarations to Init fields.
-//
-// Parameters:
-//   - c: inspector.Cursor pointing to an *ast.AssignStmt
-//
-// Returns:
-//   - []int: Indices of RHS expressions that are composite literals requiring parentheses
+// # Returns indices of RHS expressions that are composite literals requiring parentheses.
 //
 // [composite literals]: https://go.dev/ref/spec#Composite_literals
 func compositeLits(c inspector.Cursor) []int {
@@ -325,41 +492,6 @@ expressions:
 	}
 
 	// No problematic composite literals found
-	return false
-}
-
-// validTarget checks if a target Init field is occupied and reports an internal error if so.
-//
-// This function is a safety check that should never trigger in normal operation. It's called when
-// generateFix attempts to move a declaration to an Init field. If the Init field is already occupied,
-// it means either:
-//  1. The analyzer's logic has a bug (it should have detected the occupied Init in canUseNode)
-//  2. The code was modified between analysis and fix generation
-//
-// Parameters:
-//   - target: The Init field AST node that we want to use (e.g., IfStmt.Init)
-//   - source: The declaration statement we're trying to move
-//
-// Returns:
-//   - bool: true if init is free (valid), false if init is occupied (invalid)
-func (p pass) validTarget(init, source analysis.Range) bool {
-	if init == nil {
-		return true
-	}
-
-	// Target Init field is already occupied - this should never happen
-	message := "Internal error: Init is not empty"
-	related := []analysis.RelatedInformation{
-		{Pos: source.Pos(), End: source.End(), Message: "Move candidate"},
-	}
-
-	p.pass.Report(analysis.Diagnostic{
-		Pos:     init.Pos(),
-		End:     init.End(),
-		Message: message,
-		Related: related,
-	})
-
 	return false
 }
 

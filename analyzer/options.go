@@ -72,3 +72,16 @@ func (o generatedOption) apply(opts *analyze.Options) {
 func (o generatedOption) LogAttr() slog.Attr {
 	return slog.Bool("generated", o.generated)
 }
+
+// WithMaxLines is an [Option] to configure diagnostics in generated files.
+func WithMaxLines(maxLines int) Option { return maxLinesOption{maxLines: maxLines} }
+
+type maxLinesOption struct{ maxLines int }
+
+func (o maxLinesOption) apply(opts *analyze.Options) {
+	opts.MaxLines = o.maxLines
+}
+
+func (o maxLinesOption) LogAttr() slog.Attr {
+	return slog.Int("maxLines", o.maxLines)
+}

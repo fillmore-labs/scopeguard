@@ -20,7 +20,7 @@ import "fmt"
 
 // Multi-value assignment where both variables are only used in one block.
 func multiValSimple() {
-
+	// want "Variable 'y' is unused and can be removed"
 	// want "Variables 'x' and 'y' can be moved to tighter block scope"
 	if true {
 		x, y := 1, 2
@@ -71,8 +71,8 @@ func multiValThreeIf() {
 
 // Multi-value assignment where only one variable is used in tighter scope.
 func multiValOneUsed() {
-
-	x, y := 1, 2
+	var y int
+	x, y := 1, 2.0
 	if true {
 		fmt.Println(x)
 	}

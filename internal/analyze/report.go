@@ -21,8 +21,8 @@ import (
 	"fmt"
 	"go/ast"
 	"go/token"
-	"regexp"
 	"runtime/trace"
+	"slices"
 	"strings"
 
 	"golang.org/x/tools/go/analysis"
@@ -36,152 +36,63 @@ import (
 //  1. Constructs a diagnostic message describing what can be moved and where
 //  2. Generates a suggested fix with text edits to perform the move (if possible)
 //  3. Reports the diagnostic to the analysis framework
-//
-// Parameters:
-//   - ctx: Context for tracing and cancellation
-//   - targets: Sorted list of declarations that can be moved to tighter scopes
-//   - includeGenerated: When false, identifies generated files and disables fixes for them.
-//     When true, assumes generated files were already excluded by declarations phase.
-//
-// Returns:
-//   - error: Non-nil if the inspector result is missing (should never happen in practice)
-//
-// Diagnostic Format:
-//   - Message: "Variable(s) 'name' can be moved to tighter <scope> scope"
-//   - Position: The declaration statement being flagged
-//   - Related Info: Points to the target scope with message "To this <scope> scope"
-//   - Suggested Fix: Text edits to move the declaration (omitted if dontFix flag is set or file is generated)
-func (p pass) report(ctx context.Context, in *inspector.Inspector, targets targetResult, includeGenerated bool) error {
+func (p pass) report(ctx context.Context, in *inspector.Inspector, targets targetResult) {
 	defer trace.StartRegion(ctx, "report").End()
 
-	var checker generatedChecker
-	if includeGenerated { // When generated files are not included, we don't need to check
-		checker = make(generatedChecker)
-	}
-
 	for _, move := range targets.move {
-		p.reportAndFix(in, checker, move)
-	}
+		c := in.At(move.decl)
+		node := c.Node()
 
-	return nil
-}
-
-func (p pass) reportAndFix(in *inspector.Inspector, checker generatedChecker, move moveTarget) {
-	c := in.At(move.decl)
-	stmt := c.Node()
-
-	dontFix := move.dontFix
-
-	if f := enclosingFile(c); f != nil {
-		if hasNoLintComment(p.pass.Fset, f, stmt) {
-			return
+		diagnostic := analysis.Diagnostic{
+			Pos: node.Pos(),
+			End: node.End(),
 		}
 
-		if !dontFix && checker.isGenerated(f) {
-			dontFix = true
-		}
-	}
+		diagnostic.Message, diagnostic.Related = createMessage(node, move.targetNode, move.unused)
 
-	varNames := collectNames(stmt)
-
-	diagnostic := analysis.Diagnostic{
-		Pos: stmt.Pos(),
-		End: stmt.End(),
-	}
-
-	diagnostic.Message, diagnostic.Related = createMessage(varNames, move.targetNode)
-
-	if !dontFix {
-		if edits := p.createEdits(c, move.targetNode); len(edits) > 0 {
-			diagnostic.SuggestedFixes = []analysis.SuggestedFix{{Message: diagnostic.Message, TextEdits: edits}}
-		}
-	}
-
-	p.pass.Report(diagnostic)
-}
-
-func hasNoLintComment(fset *token.FileSet, f *ast.File, stmt ast.Node) bool {
-	for _, co := range f.Comments {
-		if co.Pos() > stmt.Pos() {
-			if fset.Position(co.Pos()).Line != fset.Position(stmt.Pos()).Line {
-				break
+		if !move.dontFix {
+			if edits := p.createEdits(c, move.targetNode, move.unused); len(edits) > 0 {
+				diagnostic.SuggestedFixes = []analysis.SuggestedFix{{Message: diagnostic.Message, TextEdits: edits}}
 			}
-
-			if linters, ok := parseDirective(co.List[0].Text); !ok || !containsScopeguard(linters) {
-				break
-			}
-
-			return true
 		}
-	}
 
-	return false
+		p.Report(diagnostic)
+	}
 }
 
-func enclosingFile(c inspector.Cursor) *ast.File {
-	for e := range c.Enclosing((*ast.File)(nil)) {
-		f, _ := e.Node().(*ast.File)
-
-		return f
-	}
-
-	return nil
-}
-
-var nolintPattern = regexp.MustCompile(`^//\s*nolint:([a-zA-Z0-9,_-]+)`)
-
-// parseDirective extracts linter names from a nolint comment.
-func parseDirective(text string) (linters []string, ok bool) {
-	matches := nolintPattern.FindStringSubmatch(text)
-	if matches == nil {
-		return nil, false
-	}
-
-	// Parse comma-separated linter list
-	linters = strings.Split(matches[1], ",")
-	for i, l := range linters {
-		linters[i] = strings.ToLower(strings.TrimSpace(l))
-	}
-
-	return linters, true
-}
-
-const scopeguard = "scopeguard"
-
-// containsScopeguard checks if "scopeguard" is in the linter list.
-func containsScopeguard(linters []string) bool {
-	for _, l := range linters {
-		if strings.EqualFold(l, scopeguard) {
-			return true
-		}
-	}
-
-	return false
-}
-
-func createMessage(varNames []string, target ast.Node) (message string, related []analysis.RelatedInformation) {
-	switch allNames := concatNames(varNames); target {
+// createMessage constructs the diagnostic message and related information.
+func createMessage(node, target ast.Node, unused []string) (message string, related []analysis.RelatedInformation) {
+	switch target {
 	case nil:
 		format := "Variable %s is unused and can be removed"
-		if len(varNames) > 1 {
+		if len(unused) > 1 {
 			format = "Variables %s are unused and can be removed"
 		}
+
+		allNames := concatNames(unused)
 
 		return fmt.Sprintf(format, allNames), nil
 
 	default:
-		scopeType := scopeTypeName(target)
+		varNames := collectNames(node)
+		if len(unused) > 0 {
+			varNames = slices.DeleteFunc(varNames, func(name string) bool { return slices.Contains(unused, name) })
+		}
 
 		format := "Variable %s can be moved to tighter %s scope"
 		if len(varNames) > 1 {
 			format = "Variables %s can be moved to tighter %s scope"
 		}
 
+		allNames := concatNames(varNames)
+		scopeType := scopeTypeName(target)
+
 		return fmt.Sprintf(format, allNames, scopeType),
 			[]analysis.RelatedInformation{{Pos: target.Pos(), Message: fmt.Sprintf("To this %s scope", scopeType)}}
 	}
 }
 
+// collectNames extracts variable names from a declaration statement.
 func collectNames(stmt ast.Node) []string {
 	switch n := stmt.(type) {
 	case *ast.AssignStmt:
@@ -197,13 +108,8 @@ func collectNames(stmt ast.Node) []string {
 		return varNames
 
 	case *ast.DeclStmt:
-		decl, ok := n.Decl.(*ast.GenDecl)
-		if !ok || decl.Tok != token.VAR {
-			break
-		}
-
 		var varNames []string
-		for id := range allDeclared(decl) {
+		for id := range allDeclared(n) {
 			varNames = append(varNames, id.Name)
 		}
 
@@ -213,6 +119,7 @@ func collectNames(stmt ast.Node) []string {
 	return []string{"<unknown>"}
 }
 
+// concatNames formats a list of variable names into a human-readable string (e.g., "'a', 'b' and 'c'").
 func concatNames(varNames []string) string {
 	var allNames strings.Builder
 

@@ -30,4 +30,5 @@ func registerFlags(o *analyze.Options, flags *flag.FlagSet) {
 	}
 
 	flags.BoolVar(&o.Generated, "generated", o.Generated, "check generated files")
+	flags.IntVar(&o.MaxLines, "max-lines", o.MaxLines, "maximum number of extra lines to suggest a move")
 }

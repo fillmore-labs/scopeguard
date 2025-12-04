@@ -22,7 +22,7 @@ Package gclplugin provides golangci-lint plugin integration for the [scopeguard]
 1. Add a file `.custom-gcl.yaml` to your source with:
 
 	---
-	version: v2.6.2
+	version: v2.7.0
 
 	name: golangci-lint
 	destination: .

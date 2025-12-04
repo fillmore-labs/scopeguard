@@ -29,27 +29,15 @@ func (b B) String() string { return b.s }
 
 func (b B) GoString() string { return b.s }
 
-// Redefinition - fix breaks
-func redef() {
-	var b fmt.Stringer = B{"test"}
-	s := b.String() // want "Variable 's' can be moved to tighter if scope"
-
-	if b, ok := b.(fmt.GoStringer); ok {
-		if s == b.GoString() {
-			fmt.Println("equal")
-		}
-	}
-}
-
 // Redefinition - fine
 func redef2() {
 	var b fmt.Stringer = B{"test"}
 	// want "Variable 's' can be moved to tighter block scope"
 
 	if true {
-		s := b.String() 
+		s := b.String()
 		_ = s
-		b, ok  := b.(fmt.GoStringer)
+		b, ok := b.(fmt.GoStringer)
 		if !ok {
 			return
 		}
@@ -76,15 +64,43 @@ func shadow(name string) []string {
 	return path
 }
 
-// Unused - fix breaks
+// Unused
 func unused() {
 	// want "Variables 'a' and 'err' can be moved to tighter if scope"
 	if a, err := 1, errors.New("test"); err != nil {
 		fmt.Println(a)
 	}
 
-	// want "Variables 'b' and 'err' can be moved to tighter if scope"
-	if b, err := 1, errors.New("test"); b != 0 {
+	// want "Variable 'b' can be moved to tighter if scope"
+	if b, _ := 1, errors.New("test"); b != 0 {
 		fmt.Println(b)
 	}
+}
+
+func unusedErr() {
+	_ = func() error { return nil }() // want "Variable 'err' is unused and can be removed"
+
+	// want "Variables 'a' and 'err' can be moved to tighter if scope"
+
+	if a, err := func() (int, error) { return 0, nil }(); a == 0 {
+		fmt.Println(a, err)
+	}
+}
+
+func alreadyDeclared() {
+	x := 1 // want "Variable 'x' can be moved to tighter block scope"
+	if true {
+		x := fmt.Sprintf("%d", x)
+		fmt.Println(x)
+	}
+}
+
+func madeUnused() {
+	// want "Variables 'a' and 'ok' can be moved to tighter if scope"
+	if a, ok := 1, true; ok {
+		fmt.Println(a)
+	}
+
+	b, _ := 2, false // want "Variable 'ok' is unused and can be removed"
+	fmt.Println(b)
 }

@@ -2,7 +2,7 @@ module fillmore-labs.com/scopeguard
 
 go 1.24.0
 
-toolchain go1.25.4
+toolchain go1.25.5
 
 require (
 	github.com/golangci/plugin-module-register v0.1.2

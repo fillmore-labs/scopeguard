@@ -39,7 +39,6 @@ linters:
     - misspell
     - modernize
     - nlreturn
-    - nolintlint
     - paralleltest
     - perfsprint
     - predeclared
@@ -58,7 +57,16 @@ linters:
     - usetesting
     - wsl_v5
     # keep-sorted end
+    - scopeguard
   settings:
+    custom:
+      scopeguard:
+        type: module
+        description: "scopeguard identifies variables with unnecessarily wide scope and suggests moving
+          them to tighter scopes."
+        original-url: "https://fillmore-labs.com/scopeguard"
+        settings:
+          max-lines: 10
     # keep-sorted start
     errcheck:
       exclude-functions:

@@ -67,8 +67,8 @@ func multiValThreeIf() {
 
 // Multi-value assignment where only one variable is used in tighter scope.
 func multiValOneUsed() {
-	var y int // want "Variable 'y' is unused and can be removed"
-	x, y := 1, 2
+	var y int
+	x, y := 1, 2.0
 	if true {
 		fmt.Println(x)
 	}

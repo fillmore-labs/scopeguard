@@ -219,7 +219,7 @@ func redec() {
 		Foo() bool
 	}
 
-	var err error // want "Variable 'err' is unused and can be removed"
+	var err error
 
 	a, err := func() (int, fooError) {
 		return 1, nil

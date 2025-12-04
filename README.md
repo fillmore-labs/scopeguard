@@ -18,8 +18,8 @@ Have you ever scrolled through a long function to find where a variable was last
 stale data.
 
 Go was designed with narrow scoping in mind — from the `:=` operator to init statements in control structures.
-`scopeguard` helps you follow these idiomatic patterns by automatically detecting opportunities to tighten variable
-scope. Write Go the way it was meant to be written.
+`scopeguard` helps you follow these patterns by automatically detecting opportunities to tighten variable scope, helping
+you write more idiomatic Go.
 
 ### Examples
 
@@ -54,7 +54,7 @@ This pattern is used in
 ```go
 func process(data []byte) error {
 	var config Config
-	err := json.Unmarshal(data, &config) // err lives in the entire function scope
+	err := json.Unmarshal(data, &config)
 	if err != nil {
 		return fmt.Errorf("invalid configuration: %w", err)
 	}
@@ -67,7 +67,7 @@ func process(data []byte) error {
 ```go
 func process(data []byte) error {
 	var config Config
-	if err := json.Unmarshal(data, &config); err != nil { // err scoped to if statement
+	if err := json.Unmarshal(data, &config); err != nil {
 		return fmt.Errorf("invalid configuration: %w", err)
 	}
 	// ... rest of function
@@ -78,7 +78,7 @@ func process(data []byte) error {
 
 - **Simplifies refactoring** — Minimizes dependencies when extracting code blocks
 - **Reduces cognitive load** — Readers can forget variables once their block ends
-- **Enables shorter names** — Variables with small scope can use concise names (as Go style guides recommend)
+- **Enables shorter names** — Variables with narrow scope can use concise names (as Go style guides recommend)
 - **Clearer intent** — Makes the relationship between variables and control structures explicit
 - **Prevents reuse errors** — Eliminates accidental reuse of a variable from a previous operation
 - **Less pollution** — Avoids cluttering broader scopes with temporary variables
@@ -90,13 +90,13 @@ Choose one of the following installation methods:
 
 ### Homebrew
 
-```console
+```shell
 brew install fillmore-labs/tap/scopeguard
 ```
 
 ### Go
 
-```console
+```shell
 go install fillmore-labs.com/scopeguard@latest
 ```
 
@@ -104,18 +104,14 @@ go install fillmore-labs.com/scopeguard@latest
 
 [Install `eget`](https://github.com/zyedidia/eget#how-to-get-eget), then
 
-```console
+```shell
 eget fillmore-labs/scopeguard
 ```
 
 ## What Gets Detected
 
-`scopeguard` analyzes your code to find the smallest possible scope for each variable declaration. It detects
-opportunities to move variables to:
-
-- **Initializers** — for `if`, `for`, or `switch` statements
-- **Block scopes** — Explicit blocks and case clauses
-- **Both `:=` and `var`** — Short declarations and explicit variable declarations
+Opportunities to move variables to initializers of `if`, `for`, or `switch` statements, or to block scopes and case
+clauses. It supports both short declarations (`:=`) and explicit variable declarations.
 
 ## What Gets Excluded
 
@@ -125,24 +121,24 @@ To ensure correctness, `scopeguard` excludes variables crossing loop or closure 
 
 To analyze your entire project, run:
 
-```console
+```shell
 scopeguard ./...
 ```
 
 ### With automatic fixes
 
-```console
+```shell
 scopeguard -fix ./...
 ```
 
-**Note:** The `-fix` flag automates refactoring, but some edge cases require manual review. Always verify changes before
+**Note:** The `-fix` flag automates refactoring, but some cases require manual review. Always verify changes before
 committing. See the [Limitations](#limitations) section for details.
 
 ### Check generated files
 
 By default, generated files are skipped. To analyze them:
 
-```console
+```shell
 scopeguard -generated ./...
 ```
 
@@ -151,56 +147,31 @@ scopeguard -generated ./...
 You can suppress diagnostics for specific lines using linter comments:
 
 ```go
-//nolint:scopeguard
-x, err := someFunction()
+x, err := someFunction() //nolint:scopeguard
 ```
 
 This is useful when you've intentionally chosen a wider scope for readability or other reasons.
 
+You can configure the maximum number of lines of a declaration to move:
+
+```shell
+scopeguard -max-lines 5 ./...
+```
+
 ## When Wider Scope Is Fine
 
-Not every suggestion improves readability. Legitimate patterns where a slightly wider scope makes code clearer include:
-
-- **Reducing nesting** — Early returns that
-  [reduce nesting](https://google.github.io/styleguide/go/decisions#indent-error-flow) take priority over artificially
-  narrow scopes
-- **Sequential error handling** — Reusing `err` across multiple operations is idiomatic in Go
-- **Accumulator variables** — Variables that persist across loop iterations
+Not every suggestion improves readability. Legitimate patterns where a slightly wider scope makes code clearer include
+[early returns](https://google.github.io/styleguide/go/decisions#indent-error-flow) that
+[reduce nesting](https://github.com/uber-go/guide/blob/2023-05-09/style.md#reduce-nesting).
 
 Use your judgment. The tool highlights opportunities; you decide what makes your code clearer.
 
 ## Limitations
 
-Always review automated changes. Some cases require manual work after applying `-fix`.
+Generally, treat `-fix` as a suggestion, not a command. You may need to rework your logic for the suggestion to be
+correct.
 
-### Shadowed variables
-
-```go
-	x, err := a()
-	if err != nil {
-		fmt.Println(x)
-	}
-
-	y, err := b()
-	if y != 0 {
-		fmt.Println(y)
-	}
-```
-
-... will be transformed to:
-
-```go
-	if x, err := a(); err != nil {
-		fmt.Println(x)
-	}
-
-	if y, err := b(); y != 0 {
-		fmt.Println(y)
-	}
-```
-
-The compiler will complain because `err` is declared but not used in the second block. You must manually change the
-second `err` to `_` to fix this.
+Always review automated changes. Some cases require manual intervention after applying `-fix`.
 
 ### Side effect dependencies
 
@@ -229,6 +200,7 @@ second `err` to `_` to fix this.
 
 ```go
 	// ... previous code
+
 	if !called {
 		t.Error("Expected f to be called")
 	}
@@ -238,13 +210,13 @@ second `err` to `_` to fix this.
 	}
 ```
 
-The call to `f()` is moved after the check for `called`, so the test will fail.
+The call to `f()` is moved after the check for `called`, causing the test to fail.
 
-To fix this, either rework your logic not to depend on the side effect so early (testing whether the function has been
+To fix this, either rework your logic not to depend on the side effect so early (e.g. test whether the function has been
 called _after_ validating the result), use the result before testing the side effect (`_ = got` is enough and can also
-be used to document your dependency on a side effect here) or suppress diagnostic with `//nolint:scopeguard`.
+be used to document your dependency on a side effect), or suppress the diagnostic with `//nolint:scopeguard`.
 
-### Variable modification after use
+### Evaluation order changes
 
 Similarly, the fix can break code that modifies variables used in the calculation:
 
@@ -264,14 +236,48 @@ Similarly, the fix can break code that modifies variables used in the calculatio
 In the example above, moving the declaration of `got` and `want` into the `if` statement changes _when_ `s[i]` is
 evaluated. The fix places it after `i` is incremented, altering the result and breaking the logic.
 
-Generally, treat `-fix` as a powerful suggestion, not a command. You may need to rework your logic for the suggestion to
-be correct.
+### Type Changes of Untyped Expressions
+
+When moving a variable declaration, the inferred type may change if the original declaration specified an explicit type.
+Consider:
+
+```go
+	var a, b int
+
+	a, c := 3.0+1.0, 4.5
+
+	fmt.Println(1 / a)
+
+	if true {
+		b = 5.0
+		fmt.Println(b, c)
+	}
+```
+
+... will be transformed to:
+
+```go
+	a, c := 3.0+1.0, 4.5
+
+	fmt.Println(1 / a)
+
+	if true {
+		var b int
+		b = 5.0
+		fmt.Println(b, c)
+	}
+```
+
+Moving the declaration changes `a`'s type from `int` to `float64`, causing a different result for `1 / a`.
+
+This should be rare in practice. To avoid this, ensure variables that need a specific type are declared as narrowly as
+possible or use `//nolint:scopeguard` at the declaration.
 
 ## Integration
 
 ### `go vet`
 
-```console
+```shell
 go vet -vettool=$(which scopeguard) ./...
 ```
 
@@ -281,7 +287,7 @@ Add a file `.custom-gcl.yaml` to your source with
 
 ```yaml
 ---
-version: v2.6.2
+version: v2.7.0
 
 name: golangci-lint
 destination: .
@@ -289,13 +295,13 @@ destination: .
 plugins:
   - module: fillmore-labs.com/scopeguard
     import: fillmore-labs.com/scopeguard/gclplugin
-    version: v0.0.1
+    version: v0.0.2
 ```
 
 Then, run `golangci-lint custom` from your project root. You get a custom `golangci-lint` executable that can be
 configured in `.golangci.yaml`:
 
-```YAML
+```yaml
 ---
 version: "2"
 linters:
@@ -305,8 +311,11 @@ linters:
     custom:
       scopeguard:
         type: module
-        description: "scopeguard identifies variables with unnecessarily wide scope and suggests moving them to tighter scopes."
+        description:
+          "scopeguard identifies variables with unnecessarily wide scope and suggests moving them to tighter scopes."
         original-url: "https://fillmore-labs.com/scopeguard"
+        settings:
+          max-lines: 10
 ```
 
 and can be used like `golangci-lint`:
@@ -321,13 +330,17 @@ See also the golangci-lint
 ## Related Tools
 
 - [`ineffassign`](https://github.com/gordonklaus/ineffassign) — Detect ineffectual assignments.
-- [`shadow`](https://pkg.go.dev/golang.org/x/tools/go/analysis/passes/shadow) - Check for possible unintended shadowing
+- [`shadow`](https://pkg.go.dev/golang.org/x/tools/go/analysis/passes/shadow) — Check for possible unintended shadowing
   of variables.
+- [`ifshort`](https://github.com/esimonov/ifshort) — Deprecated linter that checks if code uses short syntax for `if`
+  statements (Archived).
+- [noinlineerr](https://github.com/AlwxSin/noinlineerr) — Linter that prefers wider variable scope (the opposite
+  philosophy).
 
 ## Future Work
 
-Since `shadow` might [get deprecated](http://go.dev/issue/75342) and the issues of scope and shadowing are tightly
-related, shadow detection might get integrated into a future version. This could also help with the error of moving
+Since `shadow` might [get deprecated](https://go.dev/issue/75342) and the issues of scope and shadowing are tightly
+related, shadow detection may be integrated into a future version. This could also help with the error of moving
 shadowed variables.
 
 ## Links

@@ -16,24 +16,58 @@
 
 package b
 
-import (
-	"errors"
-	"fmt"
-)
+import "fmt"
 
-func a() (int, error) { return 1, errors.New("test") }
-
-func b() (int, error) { return 1, nil }
-
-// Unused - fix breaks
-func unused() {
-	x, err := a() // want "Variables 'x' and 'err' can be moved to tighter if scope"
-	if err != nil {
+func alreadyDeclared() {
+	x := 1 // want "Variable 'x' can be moved to tighter block scope"
+	if true {
+		x := fmt.Sprintf("%d", x)
 		fmt.Println(x)
 	}
+}
 
-	y, err := b() // want "Variables 'y' and 'err' can be moved to tighter if scope"
-	if y != 0 {
-		fmt.Println(y)
+func fixBreaks() {
+	a, ok := 1, true // want "Variables 'a' and 'ok' can be moved to tighter if scope"
+	if ok {
+		fmt.Println(a)
+	}
+
+	b, ok := 2, false // want "Variable 'ok' is unused and can be removed"
+	fmt.Println(b)
+}
+
+type A int
+
+func (a A) int() int { return int(a) }
+
+func moveOver() {
+	var a, b A // want "Variables 'a' and 'b' can be moved to tighter block scope"
+
+	a, c := 3, 4
+
+	fmt.Println(a.int())
+
+	if true {
+		b = 6
+
+		fmt.Println(a, b, c)
+	}
+}
+
+type myError int
+
+func (m myError) Error() string { return fmt.Sprintf("error %d", m) }
+
+func moveOver2() {
+	var a, b error // want "Variables 'a' and 'b' can be moved to tighter block scope"
+
+	a, c := func() (myError, myError) { return 1, 2 }()
+
+	a = func() error { return nil }()
+
+	if true {
+		b = func() myError { return 3 }()
+
+		fmt.Println(a, b, c)
 	}
 }

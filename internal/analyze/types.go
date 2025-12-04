@@ -24,57 +24,34 @@ import (
 // nodeIndex is the index from [inspector.Cursor], increases monotonically throughout the traversal.
 type nodeIndex = int32
 
-// declResult contains all variable declarations collected in Stage 1.
-//
-// Variables can have multiple declaration indices when they're redeclared
-// (e.g., x := 1; later: x, y := foo()). The indices are ordered by source position.
-//
-// Named return values receive special handling:
-//   - They're NOT included in decls (they're part of function signature, not movable)
-//   - Their redeclarations ARE marked in notMovable (so Stage 2 can filter them out)
-type declResult = struct {
-	// Map of variables to their declaration node indices.
-	// Includes both initial declarations and redeclarations (except for named returns).
-	decls map[*types.Var][]nodeIndex
+const invalidNode nodeIndex = -1
 
-	// Indices of short declarations that redefine named return values.
-	// These cannot be moved because bare return statements can use named returns
-	// anywhere in the function body.
-	notMovable map[nodeIndex]struct{}
-}
-
-// scopeRange represents the scope range for a variable declaration.
-//
-// It tracks both where a variable is declared and the tightest scope
-// that contains all its uses, which is the minimum scope the declaration can be moved to.
+// scopeRange represents the scope range for a declaration.
 type scopeRange = struct {
 	decl, // The scope where the variable was declared
 	usage *types.Scope // The tightest scope containing all uses (LCA of all usage scopes)
 }
 
-// usageResult contains the scope analysis for all variable declarations from Stage 2.
-//
-// This is the output of the usage phase, which tracks variable uses and computes
-// the minimum scope for each declaration by finding the lowest common ancestor
-// of all usage scopes.
+// usageResult contains the scope analysis for all variable declarations from stage 1.
 type usageResult = struct {
 	// Map from declaration indices to their computed scope ranges.
 	// The scopeRange.usage field represents the tightest scope containing all uses.
-	scopes map[nodeIndex]scopeRange
+	scopeRanges map[nodeIndex]scopeRange
 
-	// Map of unused variable declarations.
-	// The boolean value indicates: true = keep for type safety, false = can be removed.
-	unused map[nodeIndex]bool
+	// Map of variables to usage.
+	usages map[*types.Var][]nodeUsage
+}
+
+// nodeUsage tracks a single usage of a declaration.
+type nodeUsage = struct {
+	decl nodeIndex
+	used bool
 }
 
 // moveTarget represents a declaration that can be moved to a tighter scope.
-//
-// This is the output of the target phase, containing all information needed to:
-//  1. Locate the declaration in the AST (via decl index)
-//  2. Determine whether to generate a fix (via flag dontFix)
-//  3. Generate the diagnostic message and fix (with targetNode as target)
 type moveTarget = struct {
-	targetNode ast.Node  // The AST node representing the target scope (e.g., *ast.IfStmt, *ast.BlockStmt)
+	targetNode ast.Node  // The node with  the target scope (e.g., *ast.IfStmt, *ast.BlockStmt)
+	unused     []string  // Unused identifiers in this declaration
 	decl       nodeIndex // Inspector index of the declaration statement to move
 	dontFix    bool      // Don't apply fixes
 }

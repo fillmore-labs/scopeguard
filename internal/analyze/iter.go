@@ -18,6 +18,7 @@ package analyze
 
 import (
 	"go/ast"
+	"go/token"
 	"iter"
 )
 
@@ -38,7 +39,12 @@ func allAssigned(stmt *ast.AssignStmt) iter.Seq[*ast.Ident] {
 }
 
 // allDeclared yields all declared [*ast.Ident] nodes.
-func allDeclared(decl *ast.GenDecl) iter.Seq[*ast.Ident] {
+func allDeclared(stmt *ast.DeclStmt) iter.Seq[*ast.Ident] {
+	decl, ok := stmt.Decl.(*ast.GenDecl)
+	if !ok || decl.Tok != token.VAR {
+		return func(func(*ast.Ident) bool) {}
+	}
+
 	return func(yield func(*ast.Ident) bool) {
 		for _, spec := range decl.Specs {
 			vspec, ok := spec.(*ast.ValueSpec)

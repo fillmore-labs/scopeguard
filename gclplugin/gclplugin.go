@@ -35,9 +35,6 @@ func New(rawSettings any) (register.LinterPlugin, error) {
 	return Plugin{settings: settings}, nil
 }
 
-// Settings represent the configuration options for an instance of the [Plugin].
-type Settings struct{}
-
 // Plugin is the scopeguard linter as a [register.LinterPlugin].
 type Plugin struct {
 	settings Settings
@@ -50,7 +47,7 @@ func (Plugin) GetLoadMode() string {
 
 // BuildAnalyzers returns the [analysis.Analyzer]s for a scopeguard run.
 func (p Plugin) BuildAnalyzers() ([]*analysis.Analyzer, error) {
-	a := scopeguard.New(scopeguard.WithGenerated(true))
+	a := scopeguard.New(scopeguard.WithGenerated(true), options(p.settings))
 
 	return []*analysis.Analyzer{a}, nil
 }

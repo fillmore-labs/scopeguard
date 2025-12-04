@@ -128,7 +128,7 @@ func simplesSelectStatement(ch chan int, x int) {
 // Functions
 func functions() {
 	// want "Variable 'even' can be moved to tighter if scope"
-	
+
 	if even := func(i int) bool { return i%2 == 0 }; even(2) {
 		fmt.Println(2)
 	}

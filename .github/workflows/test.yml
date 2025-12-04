@@ -23,43 +23,43 @@ jobs:
         go: ["1.25", "1.24"]
         include:
           - go: "1.25"
-            go-version: "1.25.4"
-            update-meta: true
+            go-version: "1.25.5"
+            latest: true
           - go: "1.24"
-            go-version: "1.24.10"
+            go-version: "1.24.11"
     env:
       GOTOOLCHAIN: local
     steps:
       - name: ✔ Check out
-        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5.0.1
+        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8  # v6.0.1
         with:
           persist-credentials: false
       - name: 🐹 Set up Go ${{ matrix.go-version }}
-        uses: actions/setup-go@44694675825211faa026b3c33043df3e48a5fa00  # v6.0.0
+        uses: actions/setup-go@4dc6199c7b1a012772edbd06daecab0f50c9053c  # v6.1.0
         with:
           go-version: ${{ matrix.go-version }}
           cache-dependency-path: "**/go.sum"
       - name: 📠 Go Telemetry
         run: go telemetry on
       - name: 🧸 golangci-lint
-        uses: golangci/golangci-lint-action@0a35821d5c230e903fcfe077583637dea1b27b47  # v9.0.0
+        uses: golangci/golangci-lint-action@1e7e51e771db61008b38414a730f564565cf7c20  # v9.2.0
         if: ${{ matrix.latest }}
         with:
-          version: v2.6.2
+          version: v2.7.0
           verify: false
       - name: 🔨 Test
         run: |
           go test -coverprofile=cover.out ./...
       - name: 🧑🏻‍💻 codecov
         uses: codecov/codecov-action@5a1091511ad55cbe89839c7260b706298ca349f7  # v5.5.1
-        if: ${{ matrix.update-meta }}
+        if: ${{ matrix.latest }}
         with:
           files: ./cover.out
           token: ${{ secrets.CODECOV_TOKEN }}
           slug: fillmore-labs/scopeguard
       - name: 🛜 Dependencies
         uses: actions/go-dependency-submission@f35d5c9af13ce9cc32f7930b171e315e878f6921  # v2.0.3
-        if: ${{ matrix.update-meta }}
+        if: ${{ matrix.latest }}
         with:
           go-mod-path: go.mod
           go-build-target: .

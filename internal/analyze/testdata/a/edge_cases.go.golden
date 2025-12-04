@@ -227,7 +227,7 @@ func redec() {
 		Foo() bool
 	}
 
-	var err error // want "Variable 'err' is unused and can be removed"
+	var err error
 
 	a, err := func() (int, fooError) {
 		return 1, nil
@@ -254,7 +254,7 @@ func (t T) value() int { return t.a }
 func compositeLiteralCall() {
 	// want "Variables 'x' and 'y' can be moved to tighter if scope"
 
-	if x, y := 1, (T{1}.value()) ; x == 1 {
+	if x, y := 1, (T{1}.value()); x == 1 {
 		fmt.Println(y)
 	}
 }
