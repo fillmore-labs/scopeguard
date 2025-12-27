@@ -10,17 +10,18 @@ func _() {
 	var x [1]struct{}
 	_ = x[MoveAllowed-0]
 	_ = x[MoveBlockedInitConflict-1]
-	_ = x[MoveBlockedTypeIncompatible-2]
-	_ = x[MoveBlockedGenerated-3]
-	_ = x[MoveBlockedDeclared-4]
-	_ = x[MoveBlockedShadowed-5]
-	_ = x[MoveBlockedTypeChange-6]
-	_ = x[MoveBlockedStatements-7]
+	_ = x[MoveAbsorbed-2]
+	_ = x[MoveBlockedTypeIncompatible-3]
+	_ = x[MoveBlockedGenerated-4]
+	_ = x[MoveBlockedDeclared-5]
+	_ = x[MoveBlockedShadowed-6]
+	_ = x[MoveBlockedTypeChange-7]
+	_ = x[MoveBlockedStatements-8]
 }
 
-const _MoveStatus_name = "movinitypgendecshwtchxst"
+const _MoveStatus_name = "moviniabstypgendecshwtchxst"
 
-var _MoveStatus_index = [...]uint8{0, 3, 6, 9, 12, 15, 18, 21, 24}
+var _MoveStatus_index = [...]uint8{0, 3, 6, 9, 12, 15, 18, 21, 24, 27}
 
 func (i MoveStatus) String() string {
 	idx := int(i) - 0

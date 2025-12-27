@@ -35,6 +35,9 @@ type Options struct {
 
 	// NestedAssign determines which nested assign checks are enabled.
 	NestedAssign level.NestedAssign
+
+	// Combine determines whether to combine declarations when moving to init statements.
+	Combine bool
 }
 
 // DefaultOptions initializes and returns a new Options instance with default values.
@@ -45,6 +48,7 @@ func DefaultOptions() *Options {
 		ScopeLevel:   level.ScopeFull,
 		ShadowLevel:  level.ShadowFull,
 		NestedAssign: level.NestedFull,
+		Combine:      false,
 	}
 
 	return o

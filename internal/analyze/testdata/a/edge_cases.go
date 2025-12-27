@@ -138,13 +138,15 @@ func selectStatement() {
 
 // Variable used in labeled loop statement.
 func labeledStatement() {
-	x := 1 // want "Variable 'x' can be moved to tighter for scope"
-outer:
-	for {
-		if x == 1 {
-			break outer
+	x := 1 // want "Variable 'x' can be moved to tighter if scope"
+	if x == 1 {
+	outer:
+		for {
+			if x > 1 {
+				break outer
+			}
+			x++
 		}
-		x++
 	}
 }
 
@@ -219,23 +221,22 @@ func redec() {
 		Foo() bool
 	}
 
-	var err error
+	e := func(i int) (int, error) { return i, nil }
+	f := func(i int) (int, fooError) { return i, nil }
 
-	a, err := func() (int, fooError) {
-		return 1, nil
-	}()
-	if err != nil {
-		return
+	a, err := e(1) // want "Variables 'a' and 'err' can be moved to tighter block scope"
+	{
+		_ = a
 	}
 
-	b, err := func() (int, error) {
-		return 2, nil
-	}()
-	if err != nil {
-		return
+	b, err := f(1)
+	if err == nil {
+		b = 0
 	}
+	_ = b
 
-	fmt.Println(a, b)
+	c, err := e(1)
+	_ = c
 }
 
 type T struct{ a int }

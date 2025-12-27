@@ -30,28 +30,57 @@ func TestAnalyzer(t *testing.T) {
 
 	testdata := analysistest.TestData()
 
-	o := DefaultOptions()
-	o.Generated = true
-	o.MaxLines = 5
+	tests := []struct {
+		name    string
+		dir     string
+		options func(*Options)
+		fix     bool
+	}{
+		{
+			name: "Default",
+			dir:  "./a",
+			options: func(o *Options) {
+				o.Generated = true
+				o.MaxLines = 5
+			},
+			fix: true,
+		},
+		{
+			name: "NoFix",
+			dir:  "./b",
+		},
+		{
+			name: "Conservative",
+			dir:  "./c",
+			options: func(o *Options) {
+				o.ScopeLevel = level.ScopeConservative
+			},
+			fix: true,
+		},
+		{
+			name: "Combine",
+			dir:  "./d",
+			options: func(o *Options) {
+				o.Combine = true
+			},
+			fix: true,
+		},
+	}
 
-	analysistest.RunWithSuggestedFixes(t, testdata, o.Analyzer(), "./a")
-}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 
-func TestAnalyzerB(t *testing.T) {
-	t.Parallel()
+			o := DefaultOptions()
+			if tt.options != nil {
+				tt.options(o)
+			}
 
-	testdata := analysistest.TestData()
-
-	analysistest.Run(t, testdata, DefaultOptions().Analyzer(), "./b")
-}
-
-func TestAnalyzerC(t *testing.T) {
-	t.Parallel()
-
-	testdata := analysistest.TestData()
-
-	o := DefaultOptions()
-	o.ScopeLevel = level.ScopeConservative
-
-	analysistest.RunWithSuggestedFixes(t, testdata, o.Analyzer(), "./c")
+			if tt.fix {
+				analysistest.RunWithSuggestedFixes(t, testdata, o.Analyzer(), tt.dir)
+			} else {
+				analysistest.Run(t, testdata, o.Analyzer(), tt.dir)
+			}
+		})
+	}
 }

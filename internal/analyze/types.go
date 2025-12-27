@@ -76,19 +76,23 @@ const (
 	UsageUsed UsageFlags = 1 << iota
 	// UsageTypeChange indicates the variable redeclaration implies a type change.
 	UsageTypeChange
-	// UsageUntypedNil indicates the variable redeclaration is assigned an untyped nil.
+	// UsageUntypedNil indicates the variable redeclaration is assigned to untyped nil.
 	UsageUntypedNil
 
 	// UsageNone indicates the variable declaration is unused.
 	UsageNone UsageFlags = 0
+
+	// UsageUsedAndTypeChange represents a combination of [UsageUsed] and [UsageTypeChange] flags.
+	UsageUsedAndTypeChange = UsageUsed | UsageTypeChange
 )
 
 // MoveTarget represents a declaration that can be moved to a tighter scope.
 type MoveTarget struct {
-	TargetNode ast.Node   // The node with the target scope (e.g., *[ast.IfStmt], *[ast.BlockStmt])
-	Unused     []string   // Unused identifiers in this declaration
-	Decl       NodeIndex  // Inspector index of the declaration statement to move
-	Status     MoveStatus // Status indicating if the move is safe or why it isn't
+	TargetNode      ast.Node    // The node with the target scope (e.g., *[ast.IfStmt], *[ast.BlockStmt])
+	Unused          []string    // Unused identifiers in this declaration
+	Decl            NodeIndex   // Inspector index of the declaration statement to move
+	AdditionalDecls []NodeIndex // Additional declarations merged into this one
+	Status          MoveStatus  // Status indicating if the move is safe or why it isn't
 }
 
 // TargetResult is the complete set of declarations that can be moved to tighter scopes.

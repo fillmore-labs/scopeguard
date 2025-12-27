@@ -1,11 +1,11 @@
 # ScopeGuard
 
 [![Go Reference](https://pkg.go.dev/badge/fillmore-labs.com/scopeguard.svg)](https://pkg.go.dev/fillmore-labs.com/scopeguard)
-[![Test](https://github.com/fillmore-labs/scopeguard/actions/workflows/test.yml/badge.svg?branch=main)](https://github.com/fillmore-labs/scopeguard/actions/workflows/test.yml)
-[![CodeQL](https://github.com/fillmore-labs/scopeguard/actions/workflows/github-code-scanning/codeql/badge.svg?branch=main)](https://github.com/fillmore-labs/scopeguard/actions/workflows/github-code-scanning/codeql)
-[![Coverage](https://codecov.io/gh/fillmore-labs/scopeguard/branch/main/graph/badge.svg?token=D7ZKQQKAIG)](https://codecov.io/gh/fillmore-labs/scopeguard)
+[![Test](https://github.com/fillmore-labs/scopeguard/actions/workflows/test.yml/badge.svg?branch=dev)](https://github.com/fillmore-labs/scopeguard/actions/workflows/test.yml)
+[![CodeQL](https://github.com/fillmore-labs/scopeguard/actions/workflows/github-code-scanning/codeql/badge.svg?branch=dev)](https://github.com/fillmore-labs/scopeguard/actions/workflows/github-code-scanning/codeql)
+[![Coverage](https://codecov.io/gh/fillmore-labs/scopeguard/branch/dev/graph/badge.svg?token=D7ZKQQKAIG)](https://codecov.io/gh/fillmore-labs/scopeguard)
 [![Go Report Card](https://goreportcard.com/badge/fillmore-labs.com/scopeguard)](https://goreportcard.com/report/fillmore-labs.com/scopeguard)
-[![Codeberg CI](https://ci.codeberg.org/api/badges/15593/status.svg?branch=main)](https://ci.codeberg.org/repos/15593/branches/main)
+[![Codeberg CI](https://ci.codeberg.org/api/badges/15593/status.svg?branch=dev)](https://ci.codeberg.org/repos/15593/branches/dev)
 [![License](https://img.shields.io/github/license/fillmore-labs/scopeguard)](https://www.apache.org/licenses/LICENSE-2.0)
 
 A Go static analyzer that finds variables declared with unnecessarily wide scope and suggests moving them into tighter
@@ -113,7 +113,7 @@ eget fillmore-labs/scopeguard
 Opportunities to move variables into the initializers of `if`, `for`, or `switch` statements, or into narrower block
 scopes and `case` clauses. Both short declarations (`:=`) and explicit variable declarations are supported.
 
-To ensure correctness, ScopeGuard excludes moves that would cross loop or closure boundaries.
+To ensure correctness, ScopeGuard excludes moves that would cross loop, closure or labeled statements boundaries.
 
 ScopeGuard also diagnoses usage-after-shadow and nested assignments.
 
@@ -248,6 +248,44 @@ Control this behavior with the `-nested-assign` flag:
 ```shell
 scopeguard -nested-assign off ./...
 ```
+
+#### Declaration Combining (Experimental)
+
+When multiple variable declarations can be moved to the same control flow initializer (like an `if` statement),
+ScopeGuard can combine them into a single parallel assignment. This feature is experimental and only available in
+non-conservative mode:
+
+**Before:**
+
+```go
+got := f(x)
+want := "result"
+if got != want {
+	t.Errorf("expected %q, got %q", want, got)
+}
+```
+
+**After:**
+
+```go
+if got, want := f(x), "result"; got != want {
+	t.Errorf("expected %q, got %q", want, got)
+}
+```
+
+Control this behavior with the `-combine` flag:
+
+- `true`: Combine compatible declarations into parallel assignments.
+- `false` (default): Let the user choose when multiple declarations target the same initializer.
+
+```shell
+scopeguard -fix -combine ./...
+```
+
+> [!NOTE]
+>
+> This feature is experimental. Always review the suggested changes carefully, as combining declarations may affect
+> readability in some cases.
 
 #### Analysis Targets
 
@@ -399,6 +437,8 @@ Moving the declaration changes `a`’s type from `int` to `float64`, causing a d
 This should be rare in practice. To avoid it, ensure variables that need a specific type are declared as narrowly as
 possible, or use `//nolint:scopeguard` at the declaration.
 
+### Combining Multi-Value Expressions
+
 ## Integration
 
 ### `go vet`
@@ -421,7 +461,7 @@ destination: .
 plugins:
   - module: fillmore-labs.com/scopeguard
     import: fillmore-labs.com/scopeguard/gclplugin
-    version: v0.0.3
+    version: v0.0.4
 ```
 
 Then run `golangci-lint custom` from your project root. This produces a custom `golangci-lint` executable that can be
@@ -442,8 +482,10 @@ linters:
         original-url: https://fillmore-labs.com/scopeguard
         settings:
           scope: conservative
-          shadow: full
           max-lines: 10
+          shadow: full
+          nested-assign: full
+          combine: true
 ```
 
 Use it like `golangci-lint`:
@@ -467,11 +509,6 @@ See also the `golangci-lint`
 - [`noinlineerr`](https://github.com/AlwxSin/noinlineerr): Linter that prefers wider variable scope (the opposite
   philosophy).
 - [`ineffassign`](https://github.com/gordonklaus/ineffassign): Detects ineffectual assignments.
-
-## Future Work
-
-Combine multiple short declarations (e.g., `got := f(); want := 42` → `got, want := f(), 42`) to enable moving them into
-initializers.
 
 ## Links
 

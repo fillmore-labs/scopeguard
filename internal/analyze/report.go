@@ -32,10 +32,9 @@ import (
 // Report generates and emits diagnostics for variables that can be moved to tighter scopes.
 //
 // This is the final phase of the analyzer pipeline. For each move target identified by the
-// target phase, this function:
-//  1. Constructs a diagnostic message describing what can be moved and where
-//  2. Generates a suggested fix with text edits to perform the move (if possible)
-//  3. Reports the diagnostic to the analysis framework
+// target phase, this function constructs a diagnostic message describing what can be moved
+// and where, generates a suggested fix with text edits to perform the move (if possible) and
+// reports the diagnostic to the analysis framework.
 func Report(ctx context.Context, p Pass, in *inspector.Inspector, targets TargetResult, conservative bool) {
 	defer trace.StartRegion(ctx, "Report").End()
 
@@ -53,10 +52,10 @@ func Report(ctx context.Context, p Pass, in *inspector.Inspector, targets Target
 			End: node.End(),
 		}
 
-		diagnostic.Message, diagnostic.Related = createMessage(node, move.TargetNode, move.Status, move.Unused)
+		diagnostic.Message, diagnostic.Related = createMessage(in, move)
 
 		if movable {
-			if edits := createEdits(p, c, move.TargetNode, move.Unused); len(edits) > 0 {
+			if edits := createEdits(p, in, move); len(edits) > 0 {
 				diagnostic.SuggestedFixes = []analysis.SuggestedFix{{Message: diagnostic.Message, TextEdits: edits}}
 			}
 		}
@@ -66,22 +65,24 @@ func Report(ctx context.Context, p Pass, in *inspector.Inspector, targets Target
 }
 
 // createMessage constructs the diagnostic message and related information.
-func createMessage(node, target ast.Node, status MoveStatus, unused []string) (message string, related []analysis.RelatedInformation) {
-	switch target {
+func createMessage(in *inspector.Inspector, move MoveTarget) (message string, related []analysis.RelatedInformation) {
+	switch move.TargetNode {
 	case nil:
 		format := "Variable %s is unused and can be removed (sg:%s)"
-		if len(unused) > 1 {
+		if len(move.Unused) > 1 {
 			format = "Variables %s are unused and can be removed (sg:%s)"
 		}
 
-		allNames := concatNames(unused)
+		allNames := concatNames(move.Unused)
 
-		return fmt.Sprintf(format, allNames, status), nil
+		return fmt.Sprintf(format, allNames, move.Status), nil
 
 	default:
+		node := in.At(move.Decl).Node()
 		varNames := collectNames(node)
-		if len(unused) > 0 {
-			varNames = slices.DeleteFunc(varNames, func(name string) bool { return slices.Contains(unused, name) })
+
+		if len(move.Unused) > 0 {
+			varNames = slices.DeleteFunc(varNames, func(name string) bool { return slices.Contains(move.Unused, name) })
 		}
 
 		format := "Variable %s can be moved to tighter %s scope (sg:%s)"
@@ -90,10 +91,10 @@ func createMessage(node, target ast.Node, status MoveStatus, unused []string) (m
 		}
 
 		allNames := concatNames(varNames)
-		targetName := scopeName(target)
+		targetName := ScopeName(move.TargetNode)
 
-		return fmt.Sprintf(format, allNames, targetName, status),
-			[]analysis.RelatedInformation{{Pos: target.Pos(), Message: fmt.Sprintf("To this %s scope", targetName)}}
+		return fmt.Sprintf(format, allNames, targetName, move.Status),
+			[]analysis.RelatedInformation{{Pos: move.TargetNode.Pos(), Message: fmt.Sprintf("To this %s scope", targetName)}}
 	}
 }
 
@@ -137,12 +138,12 @@ func concatNames(varNames []string) string {
 				separator = ", "
 			}
 
-			allNames.WriteString(separator)
+			allNames.WriteString(separator) // ignore error
 		}
 
-		allNames.WriteByte('\'')
-		allNames.WriteString(name)
-		allNames.WriteByte('\'')
+		allNames.WriteByte('\'')   // ignore error
+		allNames.WriteString(name) // ignore error
+		allNames.WriteByte('\'')   // ignore error
 	}
 
 	return allNames.String()

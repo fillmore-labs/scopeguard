@@ -18,6 +18,7 @@ package analyze
 
 import (
 	"bytes"
+	"fmt"
 	"go/ast"
 	"go/printer"
 	"go/token"
@@ -31,53 +32,99 @@ import (
 var rawcfg = &printer.Config{Mode: printer.RawFormat}
 
 // createEdits creates a suggested fix to move a variable declaration to a tighter scope.
-func createEdits(p Pass, c inspector.Cursor, targetNode ast.Node, unused []string) []analysis.TextEdit {
-	stmt := c.Node()
+func createEdits(
+	p Pass,
+	in *inspector.Inspector,
+	move MoveTarget,
+) []analysis.TextEdit {
+	stmt := in.At(move.Decl).Node()
 
 	// Get the bounds of the original statement (including comments)
 	pos, end := statementBounds(stmt)
 
 	// Handle delete-only case (unused variable removal)
-	if targetNode == nil {
-		return removeUnused(stmt, unused)
+	if move.TargetNode == nil {
+		return removeUnused(stmt, move.Unused)
 	}
 
 	// Determine where and how to insert the declaration
-	info := calcInsertInfo(p, targetNode, stmt)
+	info := calcInsertInfo(p, move.TargetNode, stmt)
 	if !info.pos.IsValid() {
 		return nil
 	}
 
-	// Prepare the statement for insertion (wrap composite literals if moving to Init field)
-	stmtToInsert := prepareStatement(c, stmt, info.moveToInit, unused)
+	var (
+		buf           bytes.Buffer
+		extraRemovals []analysis.TextEdit
+		err           error
+	)
 
 	// Build the declaration text with appropriate formatting
-	var buf bytes.Buffer
 	if info.needsNewline {
-		buf.WriteByte('\n')
+		buf.WriteByte('\n') // ignore error
 	} else {
-		buf.WriteByte(' ')
+		buf.WriteByte(' ') // ignore error
 	}
 
-	if err := rawcfg.Fprint(&buf, p.Fset, stmtToInsert); err != nil {
+	switch stmt := stmt.(type) {
+	case *ast.AssignStmt:
+		// Insert the statement (wrap composite literals if moving to the Init field)
+		// Combine with additional declarations if present
+		extraRemovals, err = fprintAssign(&buf, in, p.Fset, move, stmt, info.moveToInit)
+
+	case *ast.DeclStmt:
+		err = fprintDecl(&buf, p.Fset, stmt, move.Unused)
+
+	default:
+		err = rawcfg.Fprint(&buf, p.Fset, stmt)
+	}
+
+	if err != nil {
 		p.ReportInternalError(stmt, "Can't render statement: %s", err)
+
 		return nil
 	}
 
 	if info.needsSemicolon {
-		buf.WriteByte(';')
+		buf.WriteByte(';') // ignore error
 	} else {
-		buf.WriteByte(' ')
+		buf.WriteByte(' ') // ignore error
 	}
 
-	// Build text edits: remove from old location, insert at new location
+	// Build text edits: remove from the old location, insert at the new location
 	edits := []analysis.TextEdit{
-		{Pos: pos, End: end, NewText: []byte{}}, // Remove from old location
-		{Pos: info.pos, NewText: buf.Bytes()},   // Insert at target location
+		{Pos: pos, End: end},                  // Remove from the old location
+		{Pos: info.pos, NewText: buf.Bytes()}, // Insert at the target location
 	}
 	edits = append(edits, info.extraEdits...) // Add any additional edits (e.g., for while-style loops)
+	edits = append(edits, extraRemovals...)   // Add removals for combined declarations
 
 	return edits
+}
+
+// statementBounds returns the start and end positions of a statement, including comments.
+//
+// For var declarations, this includes doc comments before the declaration and line comments after it.
+func statementBounds(stmt ast.Node) (pos, end token.Pos) {
+	pos, end = stmt.Pos(), stmt.End()
+
+	if declStmt, ok := stmt.(*ast.DeclStmt); ok {
+		if g, ok := declStmt.Decl.(*ast.GenDecl); ok {
+			// Include doc comments that appear before the var keyword
+			if doc := g.Doc; doc != nil && doc.Pos() < pos {
+				pos = doc.Pos()
+			}
+
+			// Include line comments that appear after the declaration
+			if vspec, ok := g.Specs[len(g.Specs)-1].(*ast.ValueSpec); ok {
+				if comment := vspec.Comment; comment != nil && end < comment.End() {
+					end = comment.End()
+				}
+			}
+		}
+	}
+
+	return pos, end
 }
 
 // removeUnused generates text edits to delete or replace unused variables with the blank identifier '_'.
@@ -114,7 +161,7 @@ func removeUnusedAssign(n *ast.AssignStmt, unused []string) []analysis.TextEdit 
 	}
 
 	if all && n.Tok == token.DEFINE {
-		// Change := to = when all identifiers are removed
+		// Change `:=` to `=` when all identifiers are removed
 		edits = append(edits, analysis.TextEdit{Pos: n.TokPos, End: n.TokPos + 1})
 	}
 
@@ -183,9 +230,9 @@ func removeUnusedDecl(n *ast.DeclStmt, unused []string) []analysis.TextEdit {
 // insertInfo contains all information needed to insert a declaration at a target location.
 type insertInfo struct {
 	pos            token.Pos           // Where to insert the declaration
-	moveToInit     bool                // Whether moving to an Init field (vs block scope)
-	needsNewline   bool                // Whether to add newline before declaration
-	needsSemicolon bool                // Whether to add semicolon after declaration
+	moveToInit     bool                // Whether moving to an Init field (vs. block scope)
+	needsNewline   bool                // Whether to add a newline before declaration
+	needsSemicolon bool                // Whether to add a semicolon after declaration
 	extraEdits     []analysis.TextEdit // Additional edits (e.g., for while-style for loops)
 }
 
@@ -226,7 +273,7 @@ func calcInsertInfo(p Pass, targetNode, stmt ast.Node) insertInfo {
 		return insertInfo{
 			pos:            n.For + 3, // After "for"
 			moveToInit:     true,
-			needsSemicolon: n.Post == nil, // While-style loop needs extra semicolon
+			needsSemicolon: n.Post == nil, // While-style loop needs an extra semicolon
 			extraEdits:     extraEdits,
 		}
 
@@ -278,110 +325,112 @@ func calcInsertInfo(p Pass, targetNode, stmt ast.Node) insertInfo {
 	}
 }
 
-// statementBounds returns the start and end positions of a statement, including comments.
-//
-// For var declarations, this includes doc comments before the declaration and line comments after it.
-func statementBounds(stmt ast.Node) (pos, end token.Pos) {
-	pos, end = stmt.Pos(), stmt.End()
-
-	if declStmt, ok := stmt.(*ast.DeclStmt); ok {
-		if g, ok := declStmt.Decl.(*ast.GenDecl); ok {
-			// Include doc comments that appear before the var keyword
-			if doc := g.Doc; doc != nil && doc.Pos() < pos {
-				pos = doc.Pos()
-			}
-
-			// Include line comments that appear after the declaration
-			if vspec, ok := g.Specs[len(g.Specs)-1].(*ast.ValueSpec); ok {
-				if comment := vspec.Comment; comment != nil && end < comment.End() {
-					end = comment.End()
-				}
-			}
-		}
+// fprintAssign prints an assignment statement.
+func fprintAssign(buf *bytes.Buffer, in *inspector.Inspector, fset *token.FileSet, move MoveTarget, stmt *ast.AssignStmt, moveToInit bool) ([]analysis.TextEdit, error) {
+	// If we are not moving to Init (which might require wrapping composite literals) AND we have no other decls to combine,
+	// we can use the statement as is.
+	if stmt.Tok != token.DEFINE || (!moveToInit && len(move.AdditionalDecls) == 0) {
+		return nil, rawcfg.Fprint(buf, fset, stmt)
 	}
 
-	return pos, end
-}
-
-// prepareStatement prepares a statement for insertion at a target location.
-func prepareStatement(c inspector.Cursor, stmt ast.Node, moveToInit bool, unused []string) ast.Node {
-	switch stmt := stmt.(type) {
-	case *ast.AssignStmt:
-		return prepareAssign(c, stmt, moveToInit, unused)
-
-	case *ast.DeclStmt:
-		return prepareDecl(stmt, unused)
-
-	default:
-		return stmt
-	}
-}
-
-// prepareAssign prepares an assignment statement for insertion, handling composite literal wrapping
-// and unused variable replacement.
-func prepareAssign(c inspector.Cursor, stmt *ast.AssignStmt, moveToInit bool, unused []string) ast.Node {
-	if stmt.Tok != token.DEFINE && stmt.Tok != token.ASSIGN {
-		return stmt
-	}
-
+	// We handle composite literal wrapping for the RHS if moving to Init
 	var cls []int
 	if moveToInit {
-		// Check which RHS expressions are composite literals
-		cls = compositeLits(c)
+		cls = compositeLits(cls, in.At(move.Decl), 0)
 	}
 
-	if len(unused) == 0 && len(cls) == 0 {
-		return stmt
-	}
+	// Start with the initial statement's LHS and RHS
+	lhs := slices.Clone(stmt.Lhs)
+	rhs := slices.Clone(stmt.Rhs)
 
-	var lhs []ast.Expr
-	if len(unused) > 0 {
-		lhs = make([]ast.Expr, len(stmt.Lhs))
-		for i, expr := range stmt.Lhs {
-			if id, ok := expr.(*ast.Ident); ok && slices.Contains(unused, id.Name) {
-				expr = &ast.Ident{NamePos: id.NamePos, Name: "_"}
-			}
+	var extraRemovals []analysis.TextEdit
+	// Combine components from additional declarations
+	for _, declIdx := range move.AdditionalDecls {
+		otherCursor := in.At(declIdx)
+		otherNode := otherCursor.Node()
 
-			lhs[i] = expr
+		otherAssign, ok := otherNode.(*ast.AssignStmt)
+		if !ok {
+			return nil, fmt.Errorf("unexpected node type: %T", otherNode) // Should not happen
 		}
-	} else {
-		lhs = stmt.Lhs
-	}
 
-	// When moving to Init fields, composite literals must be wrapped in parentheses
-	// to avoid parsing ambiguity with block braces.
-	var rhs []ast.Expr
-	if len(cls) > 0 {
-		// Wrap composite literals in parentheses
-		rhs = make([]ast.Expr, len(stmt.Rhs))
-		for i, expr := range stmt.Rhs {
-			if slices.Contains(cls, i) {
-				expr = &ast.ParenExpr{X: expr}
-			}
+		// Add removal edit for this declaration
+		pos, end := statementBounds(otherNode)
+		extraRemovals = append(extraRemovals, analysis.TextEdit{Pos: pos, End: end})
 
-			rhs[i] = expr
+		if moveToInit {
+			cls = compositeLits(cls, otherCursor, len(rhs))
 		}
-	} else {
-		rhs = stmt.Rhs
+
+		// Append LHS and RHS
+		lhs = append(lhs, otherAssign.Lhs...)
+		rhs = append(rhs, otherAssign.Rhs...)
 	}
 
-	return &ast.AssignStmt{
-		Lhs:    lhs,
-		TokPos: stmt.TokPos,
-		Tok:    stmt.Tok,
-		Rhs:    rhs,
+	// Manual printing of assignment to avoid spurious newlines and handle formatting
+	if err := fprintAssignLHS(buf, fset, lhs, move.Unused); err != nil {
+		return nil, err
 	}
+
+	buf.WriteByte(' ')                 // ignore error
+	buf.WriteString(stmt.Tok.String()) // ignore error
+	buf.WriteByte(' ')                 // ignore error
+
+	if err := fprintAssignRHS(buf, fset, rhs, cls); err != nil {
+		return nil, err
+	}
+
+	return extraRemovals, nil
 }
 
-// prepareDecl prepares a declaration statement for insertion, filtering out unused value specs.
-func prepareDecl(stmt *ast.DeclStmt, unused []string) ast.Node {
+// fprintAssignLHS prints the left-hand side of an assignment, replacing unused variables with '_'.
+func fprintAssignLHS(buf *bytes.Buffer, fset *token.FileSet, lhs []ast.Expr, unused []string) error {
+	for i, expr := range lhs {
+		if i > 0 {
+			buf.WriteString(", ") // ignore error
+		}
+
+		// Replace unused variables with '_'
+		if id, ok := expr.(*ast.Ident); ok && slices.Contains(unused, id.Name) {
+			expr = &ast.Ident{NamePos: id.NamePos, Name: "_"}
+		}
+
+		if err := rawcfg.Fprint(buf, fset, expr); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// fprintAssignRHS prints the right-hand side of an assignment.
+func fprintAssignRHS(buf *bytes.Buffer, fset *token.FileSet, rhs []ast.Expr, cls []int) error {
+	for i, expr := range rhs {
+		if i > 0 {
+			buf.WriteString(", ") // ignore error
+		}
+
+		if slices.Contains(cls, i) {
+			expr = &ast.ParenExpr{Lparen: expr.Pos(), X: expr, Rparen: expr.End()}
+		}
+
+		if err := rawcfg.Fprint(buf, fset, expr); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// fprintDecl prints a declaration statement, filtering out unused value specs.
+func fprintDecl(buf *bytes.Buffer, fset *token.FileSet, stmt *ast.DeclStmt, unused []string) error {
 	if len(unused) == 0 {
-		return stmt
+		return rawcfg.Fprint(buf, fset, stmt)
 	}
 
 	decl, ok := stmt.Decl.(*ast.GenDecl)
 	if !ok || decl.Tok != token.VAR {
-		return stmt
+		return rawcfg.Fprint(buf, fset, stmt)
 	}
 
 	specs := make([]ast.Spec, 0, len(decl.Specs))
@@ -421,10 +470,10 @@ func prepareDecl(stmt *ast.DeclStmt, unused []string) ast.Node {
 	}
 
 	if len(specs) == 0 {
-		return &ast.EmptyStmt{Implicit: true}
+		return nil
 	}
 
-	return &ast.DeclStmt{
+	stmt = &ast.DeclStmt{
 		Decl: &ast.GenDecl{
 			Doc:    decl.Doc,
 			TokPos: decl.TokPos,
@@ -434,23 +483,20 @@ func prepareDecl(stmt *ast.DeclStmt, unused []string) ast.Node {
 			Rparen: decl.Rparen,
 		},
 	}
+
+	return rawcfg.Fprint(buf, fset, stmt)
 }
 
-// compositeLits identifies which RHS expressions in an assignment are [composite literals] that need parenthesization.
+// compositeLits identifies which RHS expressions in an assignment contain [composite literals] that need parenthesization:
 //
-// # Returns indices of RHS expressions that are composite literals requiring parentheses.
+//	A parsing ambiguity arises when a composite literal [...] appears as an operand between the keyword and the opening brace of the block of an "if", "for", or "switch" statement, ...
 //
 // [composite literals]: https://go.dev/ref/spec#Composite_literals
-func compositeLits(c inspector.Cursor) []int {
-	var (
-		cls     []int
-		index   = 0
-		hasNode = true
-	)
-
+func compositeLits(cls []int, c inspector.Cursor, start int) []int {
+	index := start
 	// Iterate through each RHS expression by index
-	for e := c.ChildAt(edge.AssignStmt_Rhs, 0); hasNode; e, hasNode = e.NextSibling() {
-		if hasCompositeLit(e) {
+	for e, hasNode := c.ChildAt(edge.AssignStmt_Rhs, 0), true; hasNode; e, hasNode = e.NextSibling() {
+		if NeedParent(e) {
 			// Record the index of this RHS expression
 			cls = append(cls, index)
 		}
@@ -461,35 +507,34 @@ func compositeLits(c inspector.Cursor) []int {
 	return cls
 }
 
-// hasCompositeLit detects whether an expression contains composite literals that need parenthesization.
-//
-// Returns true if the expression contains any composite literal that isn't already safely delimited.
-func hasCompositeLit(e inspector.Cursor) (compositeLit bool) {
-expressions:
+// NeedParent detects whether an expression contains composite literals that need parenthesization.
+func NeedParent(e inspector.Cursor) bool {
+	// If the expression root itself is a composite literal, it has no enclosing parents
+	// within the expression boundary to provide safe delimiters. It needs parenthesization.
+	if _, ok := e.Node().(*ast.CompositeLit); ok {
+		return true
+	}
+
+compLits:
 	for c := range e.Preorder((*ast.CompositeLit)(nil)) {
-		// Found a composite literal
-		if c == e {
-			// If the expression root itself is a composite literal, it has no enclosing parents
-			// within the expression boundary to provide safe delimiters. It needs parenthesization.
-			return true
-		}
-
-		// Walk up the parent chain to check if it's already safely delimited by parentheses,
-		// block braces, or other delimiting constructs.
-		for p := c.Parent(); p != e; p = p.Parent() {
-			switch n := p.Node().(type) {
-			case *ast.ParenExpr, // Already wrapped in parentheses: (T{1})
-				*ast.BlockStmt: // Inside a block statement (e.g., function literal body): func() { return T{1} }
-				continue expressions
-
-			case *ast.FieldList: // Inside a field list (struct fields, function params) with delimiters
-				if n.Opening.IsValid() { // Field list has opening delimiter (paren or brace): struct{ T{1} } or f(T{1})
-					continue expressions
-				}
+		// Found a composite literal. Walk up the parent chain to check if it's already
+		// safely delimited by parentheses, block braces, or other constructs.
+		for p := c; p.Index() != e.Index(); p = p.Parent() {
+			switch kind, _ := p.ParentEdge(); kind {
+			// Already wrapped
+			case edge.ParenExpr_X,
+				// Inside a block statement, function call or index expression
+				edge.BlockStmt_List, edge.CallExpr_Args, edge.IndexExpr_Index,
+				// Slice expression
+				edge.SliceExpr_Low, edge.SliceExpr_High, edge.SliceExpr_Max,
+				// Nested composite literal
+				edge.CompositeLit_Elts, edge.KeyValueExpr_Value:
+				// Safely delimited, check next composite literal
+				continue compLits
 			}
 		}
 
-		// Found a composite literal without safe delimiters - needs parenthesization
+		// Reached the root expression without finding delimiters
 		return true
 	}
 

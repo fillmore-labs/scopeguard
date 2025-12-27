@@ -17,12 +17,13 @@
 package analyze
 
 import (
-	"fmt"
 	"go/ast"
 	"go/token"
 	"go/types"
 	"iter"
 	"maps"
+
+	"golang.org/x/tools/go/ast/astutil"
 )
 
 // ScopeAnalyzer provides scope analysis for variable movement.
@@ -33,9 +34,7 @@ import (
 type ScopeAnalyzer map[*types.Scope]ast.Node
 
 // NewScopeAnalyzer creates a scope analyzer from the type checker's scope map.
-func NewScopeAnalyzer(p Pass) ScopeAnalyzer {
-	scopes := p.TypesInfo.Scopes
-
+func NewScopeAnalyzer(scopes map[ast.Node]*types.Scope) ScopeAnalyzer {
 	s := make(ScopeAnalyzer, len(scopes))
 	for node, scope := range scopes {
 		s[scope] = node
@@ -109,77 +108,80 @@ func (s ScopeAnalyzer) functionScope(scope *types.Scope) bool {
 	return ok
 }
 
-// FindTargetNode finds a suitable node for moving a variable to a tighter scope.
-func (s ScopeAnalyzer) FindTargetNode(declScope, targetScope *types.Scope, onlyBlock bool) (ast.Node, bool) {
+// TargetNode finds a suitable node for moving a variable to a tighter scope.
+//
+// Parameters:
+//   - declScope: The scope where the variable is currently declared
+//   - targetScope: The tightest scope containing all variable uses
+//   - maxPos: Position we should not cross that blocks the move
+//   - onlyBlock: If true, only consider block scopes (not init fields)
+func (s ScopeAnalyzer) TargetNode(declScope, targetScope *types.Scope, maxPos token.Pos, onlyBlock bool) ast.Node {
+	// Walk up from targetScope toward declScope, returning the first suitable node.
 	for scope := targetScope; scope != declScope; scope = scope.Parent() {
+		//  If maxPos is set, scopes starting after it are skipped.
+		if maxPos.IsValid() && scope.Pos() > maxPos {
+			continue
+		}
+
 		targetNode, ok := s[scope]
 		if !ok {
 			panic("Invalid scope range")
 		}
 
-		var initField bool
-
 		switch onlyBlock {
 		case false:
-			initField, ok = canUseNode(targetNode)
+			if canUseNode(targetNode) {
+				return targetNode
+			}
 
 		case true:
-			initField, ok = canUseBlockNode(targetNode)
-		}
-
-		if ok {
-			return targetNode, initField
+			if canUseBlockNode(targetNode) {
+				return targetNode
+			}
 		}
 	}
 
-	return nil, false
+	return nil
 }
 
 // canUseNode determines if a variable can be moved to a given AST node.
-//
-// Returns:
-//   - initField: true if the target is an Init field (if/for/switch statements)
-//   - ok: true if the node can be used as a move target
-func canUseNode(targetNode ast.Node) (initfield, ok bool) {
+func canUseNode(targetNode ast.Node) bool {
 	switch n := targetNode.(type) {
 	case *ast.IfStmt:
-		return true, n.Init == nil
+		return n.Init == nil
 
 	case *ast.ForStmt:
-		return true, n.Init == nil
+		return n.Init == nil
 
 	case *ast.SwitchStmt:
-		return true, n.Init == nil
+		return n.Init == nil
 
 	case *ast.TypeSwitchStmt:
-		return true, n.Init == nil
+		return n.Init == nil
 
 	case *ast.BlockStmt,
 		*ast.CaseClause,
 		*ast.CommClause:
-		return false, true
+		return true
 
 	// case *ast.File, *ast.FuncType, *ast.TypeSpec, *ast.RangeStmt:
 	default:
-		return false, false
+		return false
 	}
 }
 
 // canUseBlockNode determines if a variable can be moved to a given AST node.
 // This is a restricted version that only considers block scopes, not init fields.
-//
-// Returns:
-//   - initField: false
-//   - ok: true if the node can be used as a move target
-func canUseBlockNode(targetNode ast.Node) (initfield, ok bool) {
+func canUseBlockNode(targetNode ast.Node) bool {
 	switch targetNode.(type) {
 	case *ast.BlockStmt,
 		*ast.CaseClause,
 		*ast.CommClause:
-		return false, true
-	}
+		return true
 
-	return false, false
+	default:
+		return false
+	}
 }
 
 // FindSafeScope traverses from minScope up to declScope in the scope hierarchy,
@@ -230,21 +232,8 @@ func (s ScopeAnalyzer) FindSafeScope(declScope, minScope *types.Scope) *types.Sc
 			return targetScope
 		}
 
-		// Calculate parent, skip case scopes when the current is not in the body
-		parent := current.Parent()
-		switch n := s[parent].(type) {
-		case *ast.CaseClause:
-			if current.Pos() < n.Colon {
-				parent = parent.Parent()
-			}
-
-		case *ast.CommClause:
-			if current.Pos() < n.Colon {
-				parent = parent.Parent()
-			}
-		}
-
-		current = parent
+		// Calculate parent
+		current = s.parentScope(current)
 	}
 
 	// This should never happen in normal operation - it would mean declScope
@@ -299,23 +288,18 @@ func (s ScopeAnalyzer) parentScopes(root, start *types.Scope) iter.Seq2[*types.S
 // Calculate parent, skip case scopes when the current scope is not in the body but the expression.
 func (s ScopeAnalyzer) parentScope(scope *types.Scope) *types.Scope {
 	parent := scope.Parent()
-	switch n := s[parent].(type) {
-	case *ast.CaseClause:
-		if n.Colon > scope.Pos() {
-			parent = parent.Parent()
-		}
 
-	case *ast.CommClause:
-		if n.Colon > scope.Pos() {
-			parent = parent.Parent()
-		}
+	// Skip case scopes when the current scope is not in the body.
+	// Note: The parent of *ast.CaseClause expressions is the switch expression
+	if n, ok := s[parent].(*ast.CommClause); ok && scope.Pos() < n.Colon {
+		parent = parent.Parent()
 	}
 
 	return parent
 }
 
-// scopeName returns a human-readable name for the scope type.
-func scopeName(node ast.Node) string {
+// ScopeName returns a human-readable name for the scope type.
+func ScopeName(node ast.Node) string {
 	switch node.(type) {
 	// keep-sorted start newline_separated=yes
 	case *ast.BlockStmt:
@@ -352,7 +336,7 @@ func scopeName(node ast.Node) string {
 		return "<nil>"
 
 	default:
-		return fmt.Sprintf("nested: %T", node)
+		return astutil.NodeDescription(node)
 		// keep-sorted end
 	}
 }

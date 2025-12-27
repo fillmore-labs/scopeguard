@@ -19,16 +19,22 @@ package analyze
 import (
 	"context"
 	"go/ast"
+	"go/token"
 	"go/types"
-	"iter"
 	"runtime/trace"
 	"slices"
 
 	"golang.org/x/tools/go/ast/inspector"
 )
 
-// TargetOptions contains configurable options for analyzing variable scope tightening.
-type TargetOptions struct {
+// TargetAnalyzer contains configurable options for analyzing variable scope tightening.
+type TargetAnalyzer struct {
+	// Pass augments the current [*analysis.Pass]
+	Pass
+
+	// Inspector provides access to the AST.
+	Body inspector.Cursor
+
 	// ScopeAnalyzer provides context for scope adjustments and safety checks.
 	ScopeAnalyzer
 
@@ -44,263 +50,388 @@ type TargetOptions struct {
 
 	// Conservative specifies to only permit moves that don't cross code with potential side effects.
 	Conservative bool
+
+	// Combine determines whether to attempt combining initialization statements during scope tightening.
+	Combine bool
 }
 
 // Targets determines which declarations can be moved to tighter scopes and where they should go.
 //
 // Returns a sorted list of move targets.
-func Targets(ctx context.Context, p Pass, in *inspector.Inspector, opts TargetOptions) TargetResult {
-	defer trace.StartRegion(ctx, "Target").End()
+func (tm TargetAnalyzer) Targets(ctx context.Context) TargetResult {
+	defer trace.StartRegion(ctx, "Targets").End()
 
-	targets := make(targets)
+	// Identify all potential move candidates
+	cm := tm.CollectMoveCandidates()
 
-	targets.findTargets(p, in, opts)
+	// Block moves that would change variable types
+	cm.BlockMovesWithTypeChanges(tm.Usages, tm.Conservative)
 
-	// Check whether a move would change the declaration type
-	targets.resolveTypeChanges(opts.Usages, opts.Conservative)
+	// Block moves that would lose necessary type information
+	cm.BlockMovesLosingTypeInfo(tm.Usages)
 
-	// Check whether a remaining declaration needs the type from a previous one
-	targets.resolveTypeIncompatibilities(opts.Usages)
+	// Resolve Init field conflicts (possibly by combining them)
+	combine := tm.Combine && !tm.Conservative
+	cm.ResolveInitFieldConflicts(tm.Body.Inspector(), combine)
 
-	// Check whether fixing would only leave a single target with unused declarations
-	orphanedDeclarations := targets.findOrphanedDeclarations(opts.Usages)
+	if tm.Conservative {
+		// In conservative mode, blocks moves if there are intervening statements with possible side effects.
+		cm.BlockSideEffects(tm.Body.Inspector(), tm.TypesInfo)
+	}
 
-	move := targets.moveTargets(orphanedDeclarations)
+	// Find declarations that become orphaned after other moves
+	orphanedDeclarations := cm.OrphanedDeclarations(tm.Usages)
+
+	// Convert candidates to the final sorted result
+	move := cm.SortedMoveTargets(orphanedDeclarations)
 
 	return TargetResult{Move: move}
 }
 
-// targets maps declaration indices to their target information during the target phase.
-// It provides methods for conflict resolution and conversion to the final moveTarget slice.
-type targets map[NodeIndex]targetWithFlags
+// CollectMoveCandidates iterates through all usage scopes and determines valid target nodes
+// for declarations that can be moved to tighter scopes.
+func (tm TargetAnalyzer) CollectMoveCandidates() CandidateManager {
+	cm := newCandidateManager()
 
-// targetWithFlags is an intermediate representation used during target calculation.
-//
-// This type is used internally by the target function to track potential moves before
-// resolving conflicts. It contains the same information as moveTarget but
-// without the decl index, since the map key provides that information.
-//
-// After conflict resolution these are converted to moveTarget instances.
-type targetWithFlags struct {
-	targetNode ast.Node
-	unused     []string
-	status     MoveStatus
+	unused := collectUnusedVariables(tm.Usages)
+
+	labels := sortedLabels(tm.Body)
+
+	for decl, scopeRange := range tm.ScopeRanges {
+		if m, ok := tm.analyzeCandidate(decl, scopeRange, labels); ok {
+			m.unused = unused[decl]
+			cm.candidates[decl] = m
+		}
+	}
+
+	return cm
 }
 
-func (t targetWithFlags) movable() bool { return t.status.Movable() }
+// CandidateManager manages the set of declaration move candidates.
+type CandidateManager struct {
+	candidates map[NodeIndex]MoveCandidate
+}
 
-// findTargets iterates through all usage scopes and determines valid target nodes
-// for declarations that can be moved to tighter scopes. It handles:
+func newCandidateManager() CandidateManager {
+	return CandidateManager{
+		candidates: make(map[NodeIndex]MoveCandidate),
+	}
+}
+
+// MoveCandidate is an intermediate representation of a potential move operation.
+//
+// Differences from MoveTarget:
+//   - Does not include the declaration index (stored as a map key)
+//   - Mutable status field (updated during conflict resolution)
+type MoveCandidate struct {
+	targetNode      ast.Node    // Destination AST node (e.g., *ast.IfStmt for init field, *ast.BlockStmt for block)
+	unused          []string    // Variable names that are unused in this declaration
+	status          MoveStatus  // Whether the move is safe (MoveAllowed) or blocked (with reason)
+	additionalDecls []NodeIndex // Additional declarations merged into this one
+}
+
+func (m MoveCandidate) movable() bool { return m.status.Movable() }
+
+// analyzeCandidate evaluates a single declaration to see if it can be moved.
+// It handles:
 //   - Filtering out suppressed declarations (nolint, maxLines)
 //   - Finding safe scopes that avoid semantic hazards
-//   - Selecting appropriate target AST nodes based on declaration type
-//   - Tracking Init field conflicts
-func (t targets) findTargets(p Pass, in *inspector.Inspector, opts TargetOptions) {
-	initFields := make(map[ast.Node]NodeIndex)
-
-	unused := collectUnusedVariables(opts.Usages)
-
-	for decl, scopeRange := range opts.ScopeRanges {
-		if decl == InvalidNode {
-			continue
-		}
-
-		declScope, usageScope := scopeRange.Decl, scopeRange.Usage
-		if usageScope == declScope {
-			continue // Cannot move, already at the innermost scope
-		}
-
-		declCursor := in.At(decl)
-		declNode := declCursor.Node()
-
-		// Apply safety constraints: find the tightest scope that avoids
-		// semantic hazards (loop bodies, function literals)
-		safeScope := opts.FindSafeScope(declScope, usageScope)
-
-		switch safeScope {
-		case declScope:
-			continue
-
-		case nil:
-			p.ReportInternalError(declNode, "Invalid scope calculations")
-
-			continue
-		}
-
-		var (
-			identifiers iter.Seq[*ast.Ident]
-			onlyBlock   bool
-		)
-
-		switch n := declNode.(type) {
-		case *ast.AssignStmt:
-			onlyBlock = opts.MaxLines > 0 && opts.Lines(declNode) > opts.MaxLines
-			identifiers = allAssigned(n)
-
-		case *ast.DeclStmt:
-			onlyBlock = true
-			identifiers = allDeclared(n)
-
-		default:
-			continue
-		}
-
-		// Target node selection
-		targetNode, initField := opts.FindTargetNode(declScope, safeScope, onlyBlock)
-
-		if targetNode == nil {
-			continue
-		}
-
-		if opts.HasNoLintComment(declNode.Pos()) {
-			continue
-		}
-
-		target := targetWithFlags{targetNode, unused[decl], MoveAllowed}
-
-		// Do various checks whether we should suppress the fix (but not the diagnostic).
-		// They are called in order.
-		switch {
-		// In generated files.
-		case opts.Generated():
-			target.status = MoveBlockedGenerated
-
-		// Check if a moved identifier is already declared at the target scope.
-		case !initField && alreadyDeclaredInScope(safeScope, identifiers):
-			target.status = MoveBlockedDeclared
-
-		// Check if an identifier used in the definition is shadowed.
-		case usedIdentifierShadowed(p.TypesInfo, declCursor, declScope, safeScope):
-			target.status = MoveBlockedShadowed
-
-		// Only one declaration can be moved to an init field.
-		// This check has side effects.
-		case initField && t.alreadyTargeted(initFields, targetNode, decl):
-			target.status = MoveBlockedInitConflict
-
-		// In conservative mode, we check whether there are statements between
-		// the declaration and the usage to ensure no side effects are crossed.
-		case opts.Conservative && checkSkippedStatements(declCursor, targetNode):
-			target.status = MoveBlockedStatements
-		}
-
-		t[decl] = target
+//   - Selecting appropriate target AST nodes based on the declaration type
+func (tm TargetAnalyzer) analyzeCandidate(
+	decl NodeIndex,
+	scopeRange ScopeRange,
+	labels []token.Pos,
+) (MoveCandidate, bool) {
+	if decl == InvalidNode {
+		return MoveCandidate{}, false
 	}
+
+	declScope, usageScope := scopeRange.Decl, scopeRange.Usage
+	if usageScope == declScope {
+		return MoveCandidate{}, false // Cannot move, already at the innermost scope
+	}
+
+	declCursor := tm.Body.Inspector().At(decl)
+	declNode := declCursor.Node()
+	declPos := declNode.Pos()
+
+	// Find the tightest scope we can move to (avoiding loops, closures)
+	safeScope := tm.FindSafeScope(declScope, usageScope)
+	if !isScopeMoveValid(tm.Pass, safeScope, declScope, declNode) {
+		return MoveCandidate{}, false
+	}
+
+	// Find the nearest label at or after this declaration.
+	// If a label exists, it acts as a barrier - we cannot move the declaration
+	// past it to avoid placing it inside a goto loop.
+	labelBarrier := nextLabel(labels, declPos)
+
+	// Determine assigned identifiers and whether the declaration can be moved to an init field
+	identifiers, onlyBlock := declInfo(declNode, tm.CurrentFile, tm.MaxLines)
+	if identifiers == nil {
+		return MoveCandidate{}, false // Unsupported declaration type
+	}
+
+	// Find the target AST node for the move
+	targetNode := tm.TargetNode(declScope, safeScope, labelBarrier, onlyBlock)
+	if targetNode == nil || tm.NoLintComment(declPos) {
+		return MoveCandidate{}, false
+	}
+
+	// Create a move candidate
+	m := MoveCandidate{targetNode: targetNode, status: MoveAllowed}
+
+	// Do various safety checks whether we should suppress the fix (but not the diagnostic).
+	// They are called in order.
+	switch {
+	case tm.Generated():
+		// Generated files (always block fixes in generated code)
+		m.status = MoveBlockedGenerated
+
+	case alreadyDeclaredInScope(safeScope, identifiers):
+		// An identifier is already declared at the target scope (would cause compile error)
+		m.status = MoveBlockedDeclared
+
+	case usedIdentifierShadowed(tm.TypesInfo, declCursor, declScope, safeScope):
+		// A used identifier would be shadowed (can cause compile error or would change semantics)
+		m.status = MoveBlockedShadowed
+	}
+
+	return m, true
 }
 
-// alreadyTargeted checks whether the init field of the target node already has a move candidate.
+func nextLabel(labels []token.Pos, pos token.Pos) token.Pos {
+	l := len(labels)
+	if l == 0 {
+		return token.NoPos
+	}
+
+	if i, _ := slices.BinarySearch(labels, pos); i < l {
+		return labels[i]
+	}
+
+	return token.NoPos
+}
+
+// sortedLabels collects all labeled statement positions in the function body.
 //
-// Note that this has the side effect of memorizing the first candidate and blocking it when a we have a second one.
-func (t targets) alreadyTargeted(initFields map[ast.Node]NodeIndex, targetNode ast.Node, decl NodeIndex) bool {
-	firstDecl, ok := initFields[targetNode]
-	if !ok {
-		initFields[targetNode] = decl
-
-		return false
+// These positions are used to prevent declaration moves across labels,
+// which could change program semantics.
+//
+// Returns nil if no labels are found, otherwise returns sorted positions.
+func sortedLabels(body inspector.Cursor) []token.Pos {
+	var labels []token.Pos
+	for l := range body.Preorder((*ast.LabeledStmt)(nil)) {
+		labels = append(labels, l.Node().Pos())
 	}
 
-	// Multiple declarations target the same Init field:
-	//   - All conflicting moves are marked with status moveBlocked
-	//   - Diagnostics are still reported, but suggested fixes are omitted
-	//     to avoid making an arbitrary choice.
-	if otherTarget := t[firstDecl]; otherTarget.movable() {
-		otherTarget.status = MoveBlockedInitConflict
-		t[firstDecl] = otherTarget
+	if len(labels) == 0 {
+		return nil
 	}
 
-	return true
+	// Sort positions to enable binary search during candidate analysis.
+	// While Preorder traverses in depth-first order (which typically matches source order),
+	// explicit sorting ensures correctness and is negligible overhead.
+	slices.Sort(labels)
+
+	return labels
 }
 
-// resolveTypeChanges marks status as moveBlocked when the move would change
-// the type of a used variable.
-func (t targets) resolveTypeChanges(usages map[*types.Var][]NodeUsage, conservative bool) {
+// BlockMovesWithTypeChanges marks candidates as blocked when moving would change
+// the inferred type of a variable that is actually used.
+//
+// Type changes are blocked in two cases:
+//   - Conservative mode: Any type change for a used variable
+//   - Type change to untyped nil (would cause compile errors)
+func (cm CandidateManager) BlockMovesWithTypeChanges(usages map[*types.Var][]NodeUsage, conservative bool) {
 	for _, nodes := range usages {
 		for _, usage := range nodes {
-			if !hasUsedTypeChange(usage.Flags, conservative) {
+			if !usedAndTypeChange(usage.Flags, conservative) {
 				continue
 			}
 
-			target := t[usage.Decl]
-			if !target.movable() {
+			m, ok := cm.candidates[usage.Decl]
+			if !ok || !m.movable() {
 				continue
 			}
 
-			target.status = MoveBlockedTypeChange
-
-			t[usage.Decl] = target
+			m.status = MoveBlockedTypeChange
+			cm.candidates[usage.Decl] = m
 		}
 	}
 }
 
-// resolveTypeIncompatibilities prevents moves that would lose type information.
+// BlockMovesLosingTypeInfo prevents moves that would lose necessary type information.
 //
-// When a variable is reassigned with a different type inference, moving the first
-// declaration would change the variable's type. This function detects such cases
-// and blocks the move to preserve the original type semantics.
-func (t targets) resolveTypeIncompatibilities(usages map[*types.Var][]NodeUsage) {
+// Scenario: A variable is declared with an explicit or inferred type, then later reassigned
+// with a different type inference. If we move the first declaration, subsequent uses would
+// have a different type.
+//
+// Example:
+//
+//	var x any           // First declaration (unused)
+//	x, y := "hello", 0  // Reassignment with different type
+//
+// Moving the first declaration would change x's type from any to int.
+// This function detects and blocks such moves.
+func (cm CandidateManager) BlockMovesLosingTypeInfo(usages map[*types.Var][]NodeUsage) {
 	for v, nodes := range usages {
 		if len(nodes) < 2 {
 			continue
 		}
 
-		// Check whether the first target is a candidate
-		first := nodes[0].Decl
-		if first == InvalidNode {
+		// Check whether the first usage is a candidate for moving.
+		firstDecl := nodes[0].Decl
+		if firstDecl == InvalidNode {
 			continue
 		}
 
-		target, ok := t[first]
-		if !ok || !target.movable() {
+		candidate, ok := cm.candidates[firstDecl]
+		if !ok || !candidate.movable() {
 			continue
 		}
 
 		// Skip if not being moved and the variable is not in the unused list.
 		// In this case the declaration remains in place and no action is needed.
-		if target.targetNode == nil && !slices.Contains(target.unused, v.Name()) {
+		varName := v.Name()
+		if candidate.targetNode == nil && !slices.Contains(candidate.unused, varName) {
 			continue
 		}
 
 		// Skip if the next non-moved declaration does not change the type
-		if next, typeChange := t.findNextUsage(nodes); next == InvalidNode || !typeChange {
+		if !cm.typeChange(nodes) {
 			continue
 		}
 
-		// While the value is not used, the type is
-		target.unused = slices.DeleteFunc(target.unused, func(name string) bool { return name == v.Name() })
-		if target.targetNode != nil {
-			target.status = MoveBlockedTypeIncompatible // Prevent movement
+		// While the value is not used, the type information IS needed.
+		// Remove from the unused list to preserve the declaration.
+		candidate.unused = slices.DeleteFunc(candidate.unused, func(name string) bool { return name == varName })
+		if candidate.targetNode != nil {
+			candidate.status = MoveBlockedTypeIncompatible // Prevent movement
 		}
-		t[first] = target
+
+		cm.candidates[firstDecl] = candidate
 	}
 }
 
-// findNextUsage finds the next non-moved usage of a variable after the first declaration.
-// Returns invalidNodeIndex if no such usage exists.
-func (t targets) findNextUsage(usages []NodeUsage) (NodeIndex, bool) {
+// typeChange finds the next non-moved usage of a variable after the first declaration.
+// Returns false if no such usage exists.
+func (cm CandidateManager) typeChange(usages []NodeUsage) bool {
 	if len(usages) < 2 {
-		return InvalidNode, false
+		return false
 	}
 
 	for _, usage := range usages[1:] {
-		decl := usage.Decl
-
 		// skip moved declarations
-		if ti, ok := t[decl]; ok && ti.movable() {
+		if m, ok := cm.candidates[usage.Decl]; ok && m.movable() {
 			continue
 		}
 
-		return decl, usage.Flags&UsageTypeChange != 0
+		return usage.Flags&UsageTypeChange != 0
 	}
 
-	return InvalidNode, false
+	return false
 }
 
-// findOrphanedDeclarations identifies declarations that would become entirely unused
+// ResolveInitFieldConflicts handles multiple declarations targeting the same init field.
+//
+// If conservative mode is on, all conflicts are blocked.
+// If not conservative, it attempts to combine compatible simple assignments (x:=1, y:=2 -> x,y:=1,2).
+func (cm CandidateManager) ResolveInitFieldConflicts(in *inspector.Inspector, combine bool) {
+	// Map to track multiple candidates for the same target node
+	targets := make(map[ast.Node][]NodeIndex)
+
+	for decl, m := range cm.candidates {
+		// Only consider movable candidates
+		if !m.status.Movable() {
+			continue
+		}
+
+		// Check if target is an init field
+		if !initField(m.targetNode) {
+			continue
+		}
+
+		targets[m.targetNode] = append(targets[m.targetNode], decl)
+	}
+
+	for _, decls := range targets {
+		if len(decls) < 2 {
+			continue
+		}
+
+		// Attempt to combine candidates
+		if combine && combinable(in, decls) {
+			// If one candidate depends on another, they aren't movable.
+			cm.combine(decls)
+
+			continue
+		}
+
+		// Block all conflicts when not combining
+		for _, decl := range decls {
+			m := cm.candidates[decl]
+			m.status = MoveBlockedInitConflict
+			cm.candidates[decl] = m
+		}
+	}
+}
+
+// combinable verifies all are short variable declarations with n:n assignments.
+func combinable(in *inspector.Inspector, decls []NodeIndex) bool {
+	for _, decl := range decls {
+		c := in.At(decl)
+		if stmt, ok := c.Node().(*ast.AssignStmt); !ok || stmt.Tok != token.DEFINE || len(stmt.Lhs) != len(stmt.Rhs) {
+			return false
+		}
+	}
+
+	return true
+}
+
+// combine combines the declarations into the first one.
+func (cm CandidateManager) combine(decls []NodeIndex) {
+	// Sort by declaration index to ensure deterministic order.
+	slices.Sort(decls)
+
+	// Combine into the first candidate.
+	firstDecl, additionalDecls := decls[0], decls[1:]
+
+	// We store the additional declaration indices in the first candidate.
+	m := cm.candidates[firstDecl]
+	m.additionalDecls = additionalDecls
+	cm.candidates[firstDecl] = m
+
+	// The first candidate remains MoveAllowed, additional ones are marked MoveAbsorbed.
+	for _, decl := range additionalDecls {
+		m := cm.candidates[decl]
+		m.status = MoveAbsorbed
+		cm.candidates[decl] = m
+	}
+}
+
+// BlockSideEffects marks candidates as blocked if there are intervening statements with possible side effects.
+func (cm CandidateManager) BlockSideEffects(in *inspector.Inspector, info *types.Info) {
+	for decl, m := range cm.candidates {
+		// Only consider movable candidates
+		if !m.movable() {
+			continue
+		}
+
+		// Conservative mode - check for intervening statements with possible side effects
+		if parent, start, end := enclosingInterval(in.At(decl), m.targetNode); SideEffectsInInterval(info, parent, start, end) {
+			m.status = MoveBlockedStatements
+			cm.candidates[decl] = m
+		}
+	}
+}
+
+// OrphanedDeclarations identifies declarations that would become entirely unused
 // after other declarations are moved. These can have all their variables replaced with '_'.
 //
 // This handles the case where a variable is reassigned multiple times, and moving
 // the first declaration leaves subsequent assignments with no remaining reads.
-func (t targets) findOrphanedDeclarations(usages map[*types.Var][]NodeUsage) map[NodeIndex][]string {
+func (cm CandidateManager) OrphanedDeclarations(usages map[*types.Var][]NodeUsage) map[NodeIndex][]string {
 	orphanedDeclarations := make(map[NodeIndex][]string)
 
 	for v, nodes := range usages {
@@ -320,7 +451,7 @@ func (t targets) findOrphanedDeclarations(usages map[*types.Var][]NodeUsage) map
 			}
 
 			// skip moved declarations
-			if t, ok := t[index]; ok && t.movable() {
+			if m, ok := cm.candidates[index]; ok && m.movable() {
 				continue
 			}
 
@@ -341,7 +472,7 @@ func (t targets) findOrphanedDeclarations(usages map[*types.Var][]NodeUsage) map
 				continue
 			}
 
-			if t, ok := t[index]; ok && t.movable() {
+			if m, ok := cm.candidates[index]; ok && m.movable() {
 				continue
 			}
 
@@ -352,16 +483,22 @@ func (t targets) findOrphanedDeclarations(usages map[*types.Var][]NodeUsage) map
 	return orphanedDeclarations
 }
 
-// moveTargets converts the intermediate target map to a sorted slice of moveTarget.
-func (t targets) moveTargets(orphanedDeclarations map[NodeIndex][]string) []MoveTarget {
-	moveTargets := make([]MoveTarget, 0, len(t)+len(orphanedDeclarations))
+// SortedMoveTargets converts the intermediate candidate map to a sorted slice of MoveTarget.
+//
+// Combines:
+//   - Regular move candidates (with or without unused variables)
+//   - Orphaned declarations (no target node, all variables unused)
+//
+// Returns results sorted by source position for deterministic output.
+func (cm CandidateManager) SortedMoveTargets(orphanedDeclarations map[NodeIndex][]string) []MoveTarget {
+	moveTargets := make([]MoveTarget, 0, len(cm.candidates)+len(orphanedDeclarations))
 
-	for decl, target := range t {
-		moveTargets = append(moveTargets, MoveTarget{target.targetNode, target.unused, decl, target.status})
+	for decl, m := range cm.candidates {
+		moveTargets = append(moveTargets, MoveTarget{m.targetNode, m.unused, decl, m.additionalDecls, m.status})
 	}
 
 	for decl, unused := range orphanedDeclarations {
-		moveTargets = append(moveTargets, MoveTarget{nil, unused, decl, MoveAllowed})
+		moveTargets = append(moveTargets, MoveTarget{nil, unused, decl, nil, MoveAllowed})
 	}
 
 	// Sort targets in traversal order.

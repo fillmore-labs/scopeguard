@@ -145,3 +145,16 @@ func (o nestedAssignOption) logAttr() slog.Attr {
 
 	return slog.String("nested-assign", string(text))
 }
+
+// WithCombine is an [Option] to configure combining declaration when moving to control flow initializers.
+func WithCombine(combine bool) Option { return combineOption{combine: combine} }
+
+type combineOption struct{ combine bool }
+
+func (o combineOption) apply(opts *analyze.Options) {
+	opts.Combine = o.combine
+}
+
+func (o combineOption) logAttr() slog.Attr {
+	return slog.Bool("combine", o.combine)
+}

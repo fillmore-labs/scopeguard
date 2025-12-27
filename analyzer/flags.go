@@ -34,4 +34,5 @@ func registerFlags(o *analyze.Options, flags *flag.FlagSet) {
 	flags.TextVar(&o.ScopeLevel, "scope", o.ScopeLevel, "scope analysis `level`, \"full\", \"conservative\" or \"off\"")
 	flags.TextVar(&o.ShadowLevel, "shadow", o.ShadowLevel, "shadow analysis `level`, \"full\" or \"off\"")
 	flags.TextVar(&o.NestedAssign, "nested-assign", o.NestedAssign, "nested assign `level`, \"full\" or \"off\"")
+	flags.BoolVar(&o.Combine, "combine", o.Combine, "combine declaration when moving to initializers")
 }

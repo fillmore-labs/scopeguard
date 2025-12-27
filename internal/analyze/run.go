@@ -18,15 +18,23 @@ package analyze
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"go/ast"
 	"runtime/trace"
 
 	"golang.org/x/tools/go/analysis"
+	"golang.org/x/tools/go/analysis/passes/inspect"
 	"golang.org/x/tools/go/ast/edge"
 	"golang.org/x/tools/go/ast/inspector"
 
 	"fillmore-labs.com/scopeguard/analyzer/level"
 )
+
+// ErrResultMissing is returned when a required analyzer result is missing.
+// This typically indicates a configuration error where the analyzer's
+// Requires field is not properly set.
+var ErrResultMissing = errors.New("analyzer result missing")
 
 // run executes the scopeguard analyzer's pipeline.
 func (o *Options) run(ap *analysis.Pass) (any, error) {
@@ -35,15 +43,16 @@ func (o *Options) run(ap *analysis.Pass) (any, error) {
 	ctx, task := trace.NewTask(ctx, "ScopeGuard")
 	defer task.End()
 
-	p := Pass{Pass: ap}
-
-	in, err := p.Inspector()
-	if err != nil {
-		return nil, err
+	// Retrieves the [inspector.Inspector] from the pass results.
+	in, ok := ap.ResultOf[inspect.Analyzer].(*inspector.Inspector)
+	if !ok {
+		return nil, fmt.Errorf("scopeguard: %s %w", inspect.Analyzer.Name, ErrResultMissing)
 	}
 
+	p := Pass{Pass: ap}
+
 	// Build inverted scope->node map for bidirectional AST/scope navigation
-	scopes := NewScopeAnalyzer(p)
+	scopes := NewScopeAnalyzer(p.TypesInfo.Scopes)
 
 	// Remember the current file over all functions declared in it
 	var currentFile CurrentFile
@@ -85,13 +94,17 @@ func (o *Options) run(ap *analysis.Pass) (any, error) {
 				conservative := o.ScopeLevel == level.ScopeConservative
 
 				// Stage 2: compute minimum safe scopes, select target nodes and resolve conflicts
-				targets := Targets(ctx, p, in, TargetOptions{
+				tm := TargetAnalyzer{
+					Pass:          p,
+					Body:          body,
 					ScopeAnalyzer: scopes,
 					CurrentFile:   currentFile,
 					UsageResult:   usageScopes,
 					MaxLines:      o.MaxLines,
 					Conservative:  conservative,
-				})
+					Combine:       o.Combine,
+				}
+				targets := tm.Targets(ctx)
 
 				// Stage 3: Generate diagnostics with suggested fixes
 				Report(ctx, p, in, targets, conservative)

@@ -18,65 +18,10 @@ package c
 
 import "fmt"
 
-func foo() {
+func combine() {
 	x := 1
-	a := 1
-	b := "abc"[x]
-	if x++; x > 0 {
-		fmt.Println(a, b)
-	}
-}
-
-func bar() {
-	var x int
-	incX := func() { x++ }
-	x, ok := 1, true
-	incX()
-	if ok {
-		fmt.Println(x)
-	}
-}
-
-func baz() {
-	got := "got"
-	want := "want"
-	if got == want {
-		fmt.Println(got, want)
-	}
-}
-
-func safe() {
-	// want "Variable 'x' can be moved to tighter if scope"
-	const c = 2
-	var v string = "1"
-	{
-		type T int
-	}
-	if x := 1; x > 0 {
-		fmt.Println(c, v)
-	}
-}
-
-func unsafeVar() {
-	x := 0
-	incX := func() int { x++; return x }
-
-	x, y := 0, 1
-	var _ int = incX()
-	if x > 0 {
-		fmt.Println(y)
-	}
-}
-
-func labeledStatement() {
-	x := 0
-	incX := func() { x++ }
-
-label:
-	x, y := 0, 1
-	incX()
-	if x == 0 {
+	y := 2
+	if x < y {
 		fmt.Println(x, y)
-		goto label
 	}
 }

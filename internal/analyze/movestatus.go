@@ -25,6 +25,8 @@ const (
 	MoveAllowed MoveStatus = iota // mov
 	// MoveBlockedInitConflict indicates the move is blocked by an Init field conflict.
 	MoveBlockedInitConflict // ini
+	// MoveAbsorbed indicates the declaration is merged into another move.
+	MoveAbsorbed // abs
 	// MoveBlockedTypeIncompatible indicates the move is blocked by type incompatibility.
 	MoveBlockedTypeIncompatible // typ
 	// MoveBlockedGenerated indicates the move is blocked because the file is generated.

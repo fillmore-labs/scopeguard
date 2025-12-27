@@ -66,8 +66,8 @@ func (c CurrentFile) line(pos token.Pos) int {
 	return c.file.PositionFor(pos, false).Line
 }
 
-// HasNoLintComment checks if a declaration is preceded by a //nolint:scopeguard comment.
-func (c CurrentFile) HasNoLintComment(pos token.Pos) bool {
+// NoLintComment checks if a line is followed by a //nolint:scopeguard comment.
+func (c CurrentFile) NoLintComment(pos token.Pos) bool {
 	if c.node == nil {
 		return false
 	}

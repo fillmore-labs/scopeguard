@@ -24,3 +24,25 @@ func noLint() {
 		fmt.Println(x)
 	}
 }
+
+func noLintNested() {
+	var err error
+
+	err = func() error {
+		err = error(nil) //nolint:scopeguard
+		return err
+	}()
+
+	_ = err
+}
+
+func noLintSshadowed() (i int) {
+	i, a := -1, true
+
+	if a {
+		i := -i
+		return i
+	}
+
+	return //nolint:scopeguard
+}

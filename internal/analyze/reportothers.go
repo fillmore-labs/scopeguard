@@ -25,12 +25,12 @@ import (
 	"golang.org/x/tools/go/ast/inspector"
 )
 
-// Report emits diagnostics for nested assigned of variables.
+// Report emits diagnostics for nested assigns of variables.
 func (n NestedAssigned) Report(ctx context.Context, p *analysis.Pass, currentFile CurrentFile) {
 	defer trace.StartRegion(ctx, "ReportNestedAssigned").End()
 
 	for _, assignment := range n {
-		if currentFile.HasNoLintComment(assignment.id.Pos()) {
+		if currentFile.NoLintComment(assignment.id.Pos()) {
 			continue
 		}
 
@@ -53,7 +53,7 @@ func (s ShadowUsed) Report(ctx context.Context, p *analysis.Pass, in *inspector.
 
 	for _, shadowed := range s {
 		use := in.At(shadowed.Use).Node()
-		if currentFile.HasNoLintComment(use.Pos()) {
+		if currentFile.NoLintComment(use.Pos()) {
 			continue
 		}
 

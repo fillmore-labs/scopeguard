@@ -48,19 +48,35 @@ func baz() {
 func safe() {
 	x := 1 // want "Variable 'x' can be moved to tighter if scope"
 	const c = 2
+	var v string = "1"
 	{
 		type T int
 	}
 	if x > 0 {
-		fmt.Println(c)
+		fmt.Println(c, v)
 	}
 }
 
 func unsafeVar() {
 	x := 0
 	incX := func() int { x++; return x }
-	y := incX()
+
+	x, y := 0, 1
+	var _ int = incX()
 	if x > 0 {
 		fmt.Println(y)
+	}
+}
+
+func labeledStatement() {
+	x := 0
+	incX := func() { x++ }
+
+label:
+	x, y := 0, 1
+	incX()
+	if x == 0 {
+		fmt.Println(x, y)
+		goto label
 	}
 }

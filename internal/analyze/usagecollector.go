@@ -145,7 +145,7 @@ func (uc *usageCollector) result() (UsageResult, ShadowUsed, NestedAssigned) {
 //
 // For each declaration, it tracks the tightest scope containing all usages,
 // which determines if the declaration can be moved to a narrower scope.
-func (uc *usageCollector) inspectBody(body inspector.Cursor, funcType *ast.FuncType) {
+func (uc *usageCollector) inspectBody(body inspector.Cursor, typ *ast.FuncType) {
 	nodes := []ast.Node{
 		// keep-sorted start
 		(*ast.AssignStmt)(nil),
@@ -157,7 +157,7 @@ func (uc *usageCollector) inspectBody(body inspector.Cursor, funcType *ast.FuncT
 		(*ast.ReturnStmt)(nil),
 	}
 
-	results := funcType.Results
+	results := typ.Results
 
 	// No need to explicitly check return statements when we have no named results
 	// When the function declares result parameters, the body must end in a terminating statement,
@@ -193,10 +193,10 @@ func (uc *usageCollector) inspectBody(body inspector.Cursor, funcType *ast.FuncT
 			uc.handleDeclStmt(c.Index(), gen)
 
 		case *ast.FuncLit:
-			fbody, fresults := c.ChildAt(edge.FuncLit_Body, -1), n.Type
+			fbody, ftype := c.ChildAt(edge.FuncLit_Body, -1), n.Type
 
-			// Traverse recursively with different results
-			uc.inspectBody(fbody, fresults)
+			// Traverse recursively with different return values
+			uc.inspectBody(fbody, ftype)
 
 			return false // Visited in inspectBody, do not descend
 
@@ -272,7 +272,7 @@ func (uc *usageCollector) handleShortDecl(decl NodeIndex, stmt *ast.AssignStmt) 
 			case assignedType == types.Typ[types.UntypedNil]:
 				// The predeclared identifier nil cannot be used to initialize a variable with no explicit type.
 				// https://go.dev/ref/spec#Variable_declarations
-				flags = UsageUsed | UsageTypeChange | UsageUntypedNil
+				flags = UsageUsedAndTypeChange | UsageUntypedNil
 
 			case !types.Identical(v.Type(), assignedType):
 				flags = UsageTypeChange

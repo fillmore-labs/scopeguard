@@ -102,9 +102,6 @@ linters:
       enable-all: true
       disable:
         - fieldalignment
-      settings:
-        shadow:
-          strict: true
     nlreturn:
       block-size: 2
     predeclared:

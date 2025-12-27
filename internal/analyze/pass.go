@@ -17,38 +17,15 @@
 package analyze
 
 import (
-	"errors"
 	"fmt"
 
 	"golang.org/x/tools/go/analysis"
-	"golang.org/x/tools/go/analysis/passes/inspect"
-	"golang.org/x/tools/go/ast/inspector"
 )
 
 // Pass wraps *[analysis.Pass] with helper methods.
 type Pass struct {
 	*analysis.Pass
 }
-
-// Inspector retrieves the [inspector.Inspector] from the pass results.
-//
-// The inspector provides efficient AST traversal with cursor-based navigation,
-// which is more ergonomic than raw AST traversal for our use case.
-//
-// Returns an error if the [inspect.Analyzer] result is missing.
-func (p Pass) Inspector() (*inspector.Inspector, error) {
-	in, ok := p.ResultOf[inspect.Analyzer].(*inspector.Inspector)
-	if !ok {
-		return nil, fmt.Errorf("scopeguard: %s %w", inspect.Analyzer.Name, ErrResultMissing)
-	}
-
-	return in, nil
-}
-
-// ErrResultMissing is returned when a required analyzer result is missing.
-// This typically indicates a configuration error where the analyzer's
-// Requires field is not properly set.
-var ErrResultMissing = errors.New("analyzer result missing")
 
 // ReportInternalError reports an internal error diagnostic.
 // These errors indicate bugs in the analyzer logic rather than issues in the user's code.

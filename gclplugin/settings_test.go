@@ -18,6 +18,7 @@ package gclplugin_test
 
 import (
 	"encoding/json"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -28,18 +29,19 @@ const allSettings = `{
 	"scope": "conservative",
 	"shadow": "off",
 	"nested-assign": "off",
-	"max-lines": 10
+	"max-lines": 10,
+	"combine": true
 }`
 
 func TestSettings(t *testing.T) {
 	t.Parallel()
 
-	testCases := []struct {
+	testCases := [...]struct {
 		name     string
 		settings string
 		want     int
 	}{
-		{"all", allSettings, 4},
+		{"all", allSettings, reflect.TypeFor[Settings]().NumField()},
 		{"none", `{}`, 0},
 	}
 

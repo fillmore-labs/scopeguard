@@ -24,12 +24,12 @@ func recoveredReturn() {
 	// This function has a named result parameter, but the usage is not detected
 	v := func() (r int) {
 		defer func() { _ = recover() }()
-		r, ok := f() //nolint:scopeguard usage of r not detected
+		r, ok := f() //nolint:scopeguard this would be moved
 		if ok {
 			_ = r // use r
 		}
 
-		panic("recovered")
+		panic("recovered") // no return statement
 	}()
 
 	fmt.Println(v)

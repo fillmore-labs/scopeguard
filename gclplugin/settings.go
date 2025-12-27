@@ -29,6 +29,7 @@ type Settings struct {
 	Shadow       *level.Shadow       `json:"shadow,omitzero"`
 	NestedAssign *level.NestedAssign `json:"nested-assign,omitzero"`
 	MaxLines     *int                `json:"max-lines,omitzero"`
+	Combine      *bool               `json:"combine,omitzero"`
 }
 
 // Options converts [Settings] into [scopeguard.Options] for the scopeguard analyzer.
@@ -39,6 +40,7 @@ func (s Settings) Options() scopeguard.Options {
 		{scopeguard.WithShadow, s.Shadow},
 		{scopeguard.WithNestedAssign, s.NestedAssign},
 		{scopeguard.WithMaxLines, s.MaxLines},
+		{scopeguard.WithCombine, s.Combine},
 	}
 
 	return settings.options()

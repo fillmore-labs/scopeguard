@@ -60,3 +60,16 @@ func untypedNilUse() {
 		fmt.Println(err)
 	}
 }
+
+// Crossing labeled statement
+func crossesLabel() {
+	i := 0
+	j := i
+label:
+	{
+		if i < 1 || i <= j {
+			i++
+			goto label
+		}
+	}
+}
