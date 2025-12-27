@@ -67,8 +67,7 @@ linters:
           scopes.
         original-url: https://fillmore-labs.com/scopeguard
         settings:
-          scope: conservative
-          shadow: full
+          conservative: true
           max-lines: 10
     # keep-sorted start
     errcheck:
@@ -81,7 +80,8 @@ linters:
       values:
         const:
           AUTHOR: Oliver Eikemeier
-          RANGE: "2025"
+        regexp:
+          RANGE: '((2025\-2026)|2025|2026)'
       template: |-
         Copyright {{ RANGE }} {{ AUTHOR }}. All Rights Reserved.
 
@@ -102,9 +102,6 @@ linters:
       enable-all: true
       disable:
         - fieldalignment
-      settings:
-        shadow:
-          strict: true
     nlreturn:
       block-size: 2
     predeclared:

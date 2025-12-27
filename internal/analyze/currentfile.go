@@ -1,4 +1,4 @@
-// Copyright 2025 Oliver Eikemeier. All Rights Reserved.
+// Copyright 2025-2026 Oliver Eikemeier. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -26,30 +26,30 @@ import (
 
 // CurrentFile holds file information for analysis.
 type CurrentFile struct {
-	node      *ast.File
-	file      *token.File
+	file      *ast.File
+	handle    *token.File
 	generated bool
 }
 
 // NewCurrentFile creates a new FileInfo from a [token.FileSet] and an *[ast.File].
-func NewCurrentFile(fset *token.FileSet, aF *ast.File) CurrentFile {
-	if aF == nil {
+func NewCurrentFile(fset *token.FileSet, file *ast.File) CurrentFile {
+	if file == nil {
 		return CurrentFile{}
 	}
 
-	tF := fset.File(aF.FileStart)
-	if tF == nil {
+	handle := fset.File(file.FileStart)
+	if handle == nil {
 		return CurrentFile{}
 	}
 
-	gen := ast.IsGenerated(aF)
+	gen := ast.IsGenerated(file)
 
-	return CurrentFile{aF, tF, gen}
+	return CurrentFile{file, handle, gen}
 }
 
 // Valid returns true if the FileInfo is valid.
 func (c CurrentFile) Valid() bool {
-	return c.file != nil
+	return c.handle != nil
 }
 
 // Generated returns true if the file is a generated file.
@@ -63,37 +63,39 @@ func (c CurrentFile) Lines(stmt ast.Node) int {
 }
 
 func (c CurrentFile) line(pos token.Pos) int {
-	return c.file.PositionFor(pos, false).Line
+	return c.handle.PositionFor(pos, false).Line
 }
 
-// HasNoLintComment checks if a declaration is preceded by a //nolint:scopeguard comment.
-func (c CurrentFile) HasNoLintComment(pos token.Pos) bool {
-	if c.node == nil {
+// NoLintComment checks if a line is followed by a //nolint:scopeguard comment.
+func (c CurrentFile) NoLintComment(pos token.Pos) bool {
+	if c.file == nil {
 		return false
 	}
 
 	// find the first comment starting after the declaration
-	i, _ := slices.BinarySearchFunc(c.node.Comments, pos, compareCommentPosition)
-	if i >= len(c.node.Comments) {
+	i, _ := slices.BinarySearchFunc(c.file.Comments, pos,
+		func(c *ast.CommentGroup, p token.Pos) int { return int(c.Pos() - p) })
+	if i >= len(c.file.Comments) {
 		return false
 	}
 
-	comment := c.node.Comments[i].List[0]
+	comment := c.file.Comments[i].List[0]
 
 	if c.line(comment.Pos()) != c.line(pos) {
 		return false // not on this line
 	}
 
-	if linters, ok := parseDirective(comment.Text); !ok || !slices.Contains(linters, scopeguard) {
-		return false
-	}
-
-	return true
+	return CommentHasNoLint(comment)
 }
 
-func compareCommentPosition(c *ast.CommentGroup, p token.Pos) int { return int(c.Pos() - p) }
-
 var nolintPattern = regexp.MustCompile(`^//\s*nolint:([a-zA-Z0-9,_-]+)`)
+
+// CommentHasNoLint checks if the provided comment contains a `//nolint:scopeguard` directive.
+func CommentHasNoLint(comment *ast.Comment) bool {
+	linters, ok := parseDirective(comment.Text)
+
+	return ok && slices.Contains(linters, scopeguard)
+}
 
 // parseDirective extracts linter names from a nolint comment.
 func parseDirective(text string) (linters []string, ok bool) {

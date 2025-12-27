@@ -1,4 +1,4 @@
-// Copyright 2025 Oliver Eikemeier. All Rights Reserved.
+// Copyright 2026 Oliver Eikemeier. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -14,41 +14,38 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-package b
+package conservative
 
-func nested() {
-	var err error
+import "fmt"
 
-	{
-		err := error(nil)
-		_ = err
+func combine() {
+	x := 1
+	y := 2
+	if x < y {
+		fmt.Println(x, y)
 	}
-
-	err = func() error {
-		err = error(nil) // want "Nested reassignment of variable 'err'"
-		return err
-	}()
-
-	_ = err
 }
 
-func nestedOk() {
-	var err error
+func reassigned() {
+	x := 1
+	px := &x
+	z := *px
+	_, x, y := 1, 2, 3
 
-	{
-		err := error(nil)
-		_ = err
+	if y > z {
+		println(z) // would print 2 when z skips to initialization
 	}
 
-	err = func() error {
-		err := error(nil)
-		return err
-	}()
+	_ = x
+}
 
-	_ = func() error {
-		err := error(nil)
-		return err
+func reassigned2() {
+	x := 1
+	px := &x
+	_, x, y := 1, 2, 3
+	z := *px
+
+	if y > z {
+		println(z) // would print 1 when combined
 	}
-
-	_ = err
 }

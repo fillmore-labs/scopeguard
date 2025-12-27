@@ -1,4 +1,4 @@
-// Copyright 2025 Oliver Eikemeier. All Rights Reserved.
+// Copyright 2025-2026 Oliver Eikemeier. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -18,6 +18,7 @@ package gclplugin_test
 
 import (
 	"encoding/json"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -25,21 +26,24 @@ import (
 )
 
 const allSettings = `{
-	"scope": "conservative",
-	"shadow": "off",
-	"nested-assign": "off",
+	"scope": true,
+	"shadow": true,
+	"nested-assign": true,
+	"conservative": false,
+	"combine": true,
+	"rename": false,
 	"max-lines": 10
 }`
 
 func TestSettings(t *testing.T) {
 	t.Parallel()
 
-	testCases := []struct {
+	testCases := [...]struct {
 		name     string
 		settings string
 		want     int
 	}{
-		{"all", allSettings, 4},
+		{"all", allSettings, reflect.TypeFor[Settings]().NumField()},
 		{"none", `{}`, 0},
 	}
 

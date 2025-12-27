@@ -1,4 +1,4 @@
-// Copyright 2025 Oliver Eikemeier. All Rights Reserved.
+// Copyright 2025-2026 Oliver Eikemeier. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -21,7 +21,7 @@ import "fmt"
 // Test Init field conflicts: when multiple variables target the same Init field,
 // all suggestions should be suppressed.
 
-// Two variables used in same if condition - conflict, no suggestion.
+// Two variables used in same if condition.
 func twoVarsIfCondition() {
 	a := 1 // want "Variable 'a' can be moved to tighter if scope"
 	b := 2 // want "Variable 'b' can be moved to tighter if scope"
@@ -30,7 +30,7 @@ func twoVarsIfCondition() {
 	}
 }
 
-// Three variables targeting same Init field - conflict, no suggestion.
+// Three variables targeting same Init field.
 func threeVarsSwitch() {
 	x := 1 // want "Variable 'x' can be moved to tighter switch scope"
 	y := 2 // want "Variable 'y' can be moved to tighter switch scope"
@@ -69,7 +69,7 @@ func differentTargetScopes() {
 	}
 }
 
-// Two variables competing for for loop Init - conflict, no suggestion.
+// Two variables competing for for loop Init.
 func twoVarsForInit() {
 	max := 10 // want "Variable 'max' can be moved to tighter for scope"
 	i := 0    // want "Variable 'i' can be moved to tighter for scope"

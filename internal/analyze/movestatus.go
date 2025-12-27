@@ -1,4 +1,4 @@
-// Copyright 2025 Oliver Eikemeier. All Rights Reserved.
+// Copyright 2025-2026 Oliver Eikemeier. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -25,11 +25,13 @@ const (
 	MoveAllowed MoveStatus = iota // mov
 	// MoveBlockedInitConflict indicates the move is blocked by an Init field conflict.
 	MoveBlockedInitConflict // ini
+	// MoveAbsorbed indicates the declaration is merged into another move.
+	MoveAbsorbed // abs
 	// MoveBlockedTypeIncompatible indicates the move is blocked by type incompatibility.
 	MoveBlockedTypeIncompatible // typ
 	// MoveBlockedGenerated indicates the move is blocked because the file is generated.
 	MoveBlockedGenerated // gen
-	// MoveBlockedDeclared indicates the move is blocked by a declaration in the target scope.
+	// MoveBlockedDeclared indicates the move is blocked by an existing declaration in the target scope.
 	MoveBlockedDeclared // dec
 	// MoveBlockedShadowed indicates the move is blocked due to shadowing of variables used in the declaration.
 	MoveBlockedShadowed // shw

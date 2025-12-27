@@ -1,4 +1,4 @@
-// Copyright 2025 Oliver Eikemeier. All Rights Reserved.
+// Copyright 2025-2026 Oliver Eikemeier. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -19,182 +19,106 @@ package analyze
 import (
 	"go/ast"
 	"go/token"
-	"go/types"
 	"iter"
+	"slices"
 
-	"golang.org/x/tools/go/ast/edge"
 	"golang.org/x/tools/go/ast/inspector"
 )
 
-// collectUnusedVariables builds a map from declaration indices to the names of
-// variables that are declared but never read at that declaration site.
-func collectUnusedVariables(usages map[*types.Var][]NodeUsage) map[NodeIndex][]string {
-	unused := make(map[NodeIndex][]string)
-
-	for v, nodes := range usages {
-		for _, usage := range nodes {
-			if usage.Flags&UsageUsed != 0 {
-				continue
-			}
-
-			unused[usage.Decl] = append(unused[usage.Decl], v.Name())
-		}
+// nextLabel returns the closest label position in labels after pos, or token.NoPos if not found.
+func nextLabel(labels []token.Pos, pos token.Pos) token.Pos {
+	l := len(labels)
+	if l == 0 {
+		return token.NoPos
 	}
 
-	return unused
-}
-
-// alreadyDeclaredInScope checks whether any identifier is already declared in the target scope.
-func alreadyDeclaredInScope(safeScope *types.Scope, identifiers iter.Seq[*ast.Ident]) bool {
-	for id := range identifiers {
-		// Check whether the identifier already exists at that level
-		if safeScope.Lookup(id.Name) != nil {
-			return true
-		}
+	if i, _ := slices.BinarySearch(labels, pos); i < l {
+		return labels[i]
 	}
 
-	return false
+	return token.NoPos
 }
 
-// usedIdentifierShadowed checks whether any identifier used in the declaration would be
-// shadowed by a later declaration that would make the move unsafe.
-func usedIdentifierShadowed(info *types.Info, declCursor inspector.Cursor, declScope, safeScope *types.Scope) bool {
-	declNode := declCursor.Node()
-	start, end := declNode.Pos(), declNode.End()
+// declInfo extracts assigned identifiers and whether the move is restricted to block statements only.
+func declInfo(declNode ast.Node, cf CurrentFile, maxLines int) (identifiers iter.Seq[*ast.Ident], onlyBlock bool) {
+	switch n := declNode.(type) {
+	case *ast.AssignStmt:
+		// Short declarations can go to init fields if they're small enough
+		return allAssigned(n), maxLines > 0 && cf.Lines(declNode) > maxLines
 
-	checked := make(map[string]struct{})
+	case *ast.DeclStmt:
+		// var declarations can only go to block statements (not init fields)
+		return allDeclared(n), true
 
-	// Find used identifiers
-	for e := range declCursor.Preorder((*ast.Ident)(nil)) {
-		// Filter out definitions and field selectors - we only care about identifier uses
-		switch kind, _ := e.ParentEdge(); kind {
-		case edge.AssignStmt_Lhs, // Definition or side effect
-			edge.Field_Names,
-			edge.SelectorExpr_Sel,
-			edge.ValueSpec_Names: // Definitions
-			continue
-		}
-
-		id, ok := e.Node().(*ast.Ident)
-		if !ok || id.Name == "_" {
-			continue
-		}
-
-		if _, ok := checked[id.Name]; ok {
-			continue
-		}
-
-		use, ok := info.Uses[id]
-		if !ok {
-			continue
-		}
-
-		if use.Pos() > start {
-			// Identifier is declared within the moved statement itself, not a use from outside
-			continue
-		}
-
-		// Walk up the scope chain from safeScope to declScope, looking for shadowing declarations.
-		for scope := safeScope; scope != declScope; scope = scope.Parent() {
-			if shadowDecl := scope.Lookup(id.Name); shadowDecl != nil && shadowDecl.Pos() < safeScope.Pos() {
-				// Found a declaration in an intermediate scope that was defined before
-				// the target position, which would shadow the identifier we're using
-				return true
-			}
-		}
-
-		// Would the identifier be shadowed by a later declaration in the same scope?
-		// This handles cases like: y := x + 1; x := 2 (can't move y past the redeclaration of x)
-		if shadowDecl := declScope.Lookup(id.Name); shadowDecl != nil && shadowDecl != use &&
-			// Check whether the redeclaration is after our current statement (x := x is movable)
-			// and before our target position
-			end < shadowDecl.Pos() && shadowDecl.Pos() < safeScope.Pos() {
-			// Found a later redeclaration that would shadow the identifier
-			return true
-		}
-
-		checked[id.Name] = struct{}{}
+	default:
+		// Unsupported declaration type
+		return nil, false
 	}
-
-	return false
 }
 
-// checkSkippedStatements checks whether there are any statements between the node at declCursor and the target.
-// It returns true if possible side effects are detected (i.e., the move might be unsafe).
+// sortedLabels collects all labeled statement positions in the function body.
 //
-// Note that the side effects need not be in the skipped statements, they might also be in
-// the declaration itself.
-func checkSkippedStatements(declCursor inspector.Cursor, targetNode ast.Node) bool {
-	declNode := declCursor.Node()
+// These positions are used to prevent declaration moves across labels,
+// which could change program semantics.
+//
+// Returns nil if no labels are found, otherwise returns sorted positions.
+func sortedLabels(body inspector.Cursor) []token.Pos {
+	var labels []token.Pos
+	for l := range body.Preorder((*ast.LabeledStmt)(nil)) {
+		labels = append(labels, l.Node().Pos())
+	}
 
-	// Range to check
-	start := declNode.End()
-	end := targetNode.Pos()
+	if len(labels) == 0 {
+		return nil
+	}
 
-	// Find a parent that spans start...end.
-	//
-	// It does not necessarily include targetNode, only everything between.
-	parent := declCursor.Parent()
-	for {
-		if parentNode := parent.Node(); parentNode == nil || parentNode.End() >= end {
-			break
-		}
+	// Sort positions to enable binary search during candidate analysis.
+	// While Preorder traverses in depth-first order (which typically matches source order),
+	// explicit sorting ensures correctness and is negligible overhead.
+	slices.Sort(labels)
 
+	return labels
+}
+
+// enclosingInterval determines the execution interval [start, end) between the declaration
+// and the target node and finds the innermost parent that spans this interval.
+func enclosingInterval(declCursor inspector.Cursor, targetNode ast.Node) (parent inspector.Cursor, start, end token.Pos) {
+	start, end = declCursor.Node().End(), targetNode.Pos()
+
+	parent = declCursor.Parent()
+	for !extendsUntil(parent, end) {
 		parent = parent.Parent()
 	}
 
-	for s := range parent.Preorder(
-		// keep-sorted start
-		(*ast.AssignStmt)(nil),
-		(*ast.BranchStmt)(nil),
-		(*ast.CaseClause)(nil),
-		(*ast.CommClause)(nil),
-		(*ast.DeferStmt)(nil),
-		(*ast.ExprStmt)(nil),
-		(*ast.ForStmt)(nil),
-		(*ast.GenDecl)(nil),
-		(*ast.GoStmt)(nil),
-		(*ast.IfStmt)(nil),
-		(*ast.IncDecStmt)(nil),
-		(*ast.LabeledStmt)(nil),
-		(*ast.RangeStmt)(nil),
-		(*ast.ReturnStmt)(nil),
-		(*ast.SelectStmt)(nil),
-		(*ast.SendStmt)(nil),
-		(*ast.SwitchStmt)(nil),
-		(*ast.TypeSwitchStmt)(nil),
-		// keep-sorted end
-
-		// Note regarding missing ast.Stmt types:
-		// - *ast.BlockStmt is covered by its sub-statements
-		// - *ast.DeclStmt is covered by *ast.GenDecl
-		// - *ast.EmptyStmt has no side effects
-	) {
-		n := s.Node()
-		if n.Pos() >= end {
-			break // We've moved past the area
-		}
-
-		if n.Pos() < start {
-			continue // Ignore preamble
-		}
-
-		if decl, ok := n.(*ast.GenDecl); ok {
-			if decl.Tok != token.VAR {
-				continue // Const and Type declarations are safe to cross
-			}
-		}
-
-		return true
-	}
-
-	return false
+	return parent, start, end
 }
 
-// hasUsedTypeChange test whether there are a type change in the declaration
-// and the changed type is used - which would change the semantics, but is seldom a problem.
-// We flag it either in conservative mode, or for untyped nil, which would be a compile error.
-func hasUsedTypeChange(flags UsageFlags, conservative bool) bool {
-	return flags&(UsageTypeChange|UsageUsed) == UsageTypeChange|UsageUsed &&
-		(conservative || flags&UsageUntypedNil != 0)
+// extendsUntil returns true when the current parent node extends until end.
+func extendsUntil(parent inspector.Cursor, end token.Pos) bool {
+	parentNode := parent.Node()
+
+	return parentNode == nil || parentNode.End() >= end
+}
+
+// initField determines whether the targetNode is an initialization field in a control structure.
+func initField(targetNode ast.Node) bool {
+	switch targetNode.(type) {
+	case *ast.IfStmt,
+		*ast.ForStmt,
+		*ast.SwitchStmt,
+		*ast.TypeSwitchStmt:
+		return true
+
+	default:
+		return false
+	}
+}
+
+// usedAndTypeChange tests whether a type change in a declaration would affect semantics.
+func usedAndTypeChange(flags UsageFlags, conservative bool) bool {
+	// Check if both Used and TypeChange flags are set
+	usedAndTypeChange := flags&UsageUsedAndTypeChange == UsageUsedAndTypeChange
+
+	// Block in conservative mode or when untyped nil is involved
+	return usedAndTypeChange && (conservative || flags&UsageUntypedNil != 0)
 }

@@ -1,4 +1,4 @@
-// Copyright 2025 Oliver Eikemeier. All Rights Reserved.
+// Copyright 2025-2026 Oliver Eikemeier. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -108,4 +108,49 @@ func reassignedFuncNested() {
 	}()
 
 	fmt.Println(a, err)
+}
+
+func cases() {
+	a := 1
+
+	switch a {
+	case 1:
+		a := a + 1
+		fmt.Println(a)
+
+	case 2:
+		{
+			a := a + 1
+			_ = a
+		}
+		fmt.Println(a) // This might be confusing
+
+	case 3:
+		a := a + 1
+		fmt.Println(a)
+
+	default:
+		fmt.Println(a)
+	}
+
+	fmt.Println(a) // want "Identifier 'a' used after previously shadowed"
+}
+
+func sends() {
+	a := 1
+
+	ch := make(chan int)
+	select {
+	case a := <-ch:
+		{
+			a := a + 1
+			_ = a
+		}
+		fmt.Println(a) // want "Identifier 'a' used after previously shadowed"
+
+	case ch <- a: // want "Identifier 'a' used after previously shadowed"
+		fmt.Println(a)
+	}
+
+	fmt.Println(a)
 }

@@ -1,4 +1,4 @@
-// Copyright 2025 Oliver Eikemeier. All Rights Reserved.
+// Copyright 2025-2026 Oliver Eikemeier. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -58,5 +58,18 @@ func untypedNilUse() {
 	err, ptr := nil, *new(error) // want "Variables 'err' and 'ptr' can be moved to tighter if scope"
 	if err == ptr {
 		fmt.Println(err)
+	}
+}
+
+// Crossing labeled statement
+func crossesLabel() {
+	i := 0
+	j := i
+label:
+	{
+		if i < 1 || i <= j {
+			i++
+			goto label
+		}
 	}
 }

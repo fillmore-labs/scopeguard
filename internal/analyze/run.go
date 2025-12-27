@@ -1,4 +1,4 @@
-// Copyright 2025 Oliver Eikemeier. All Rights Reserved.
+// Copyright 2025-2026 Oliver Eikemeier. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -18,18 +18,30 @@ package analyze
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"go/ast"
 	"runtime/trace"
 
 	"golang.org/x/tools/go/analysis"
+	"golang.org/x/tools/go/analysis/passes/inspect"
 	"golang.org/x/tools/go/ast/edge"
 	"golang.org/x/tools/go/ast/inspector"
-
-	"fillmore-labs.com/scopeguard/analyzer/level"
 )
+
+// ErrResultMissing is returned when a required analyzer result is missing.
+// This typically indicates a configuration error where the analyzer's
+// Requires field is not properly set.
+var ErrResultMissing = errors.New("analyzer result missing")
 
 // run executes the scopeguard analyzer's pipeline.
 func (o *Options) run(ap *analysis.Pass) (any, error) {
+	// Retrieves the [inspector.Inspector] from the pass results.
+	in, ok := ap.ResultOf[inspect.Analyzer].(*inspector.Inspector)
+	if !ok {
+		return nil, fmt.Errorf("scopeguard: %s %w", inspect.Analyzer.Name, ErrResultMissing)
+	}
+
 	ctx := context.Background()
 
 	ctx, task := trace.NewTask(ctx, "ScopeGuard")
@@ -37,74 +49,86 @@ func (o *Options) run(ap *analysis.Pass) (any, error) {
 
 	p := Pass{Pass: ap}
 
-	in, err := p.Inspector()
-	if err != nil {
-		return nil, err
+	// Build inverted scope->node map for bidirectional AST/scope navigation
+	scopes := NewScopeIndex(p.TypesInfo.Scopes)
+
+	ua := UsageAnalyzer{
+		Pass:       p,
+		ScopeIndex: scopes,
+		Analyzers:  o.Analyzers,
 	}
 
-	// Build inverted scope->node map for bidirectional AST/scope navigation
-	scopes := NewScopeAnalyzer(p)
+	ta := TargetAnalyzer{
+		Pass:          p,
+		TargetScope:   NewTargetScope(scopes),
+		SafetyChecker: NewSafetyChecker(p.TypesInfo),
+		MaxLines:      o.MaxLines,
+		Conservative:  o.Behavior.Enabled(Conservative),
+		Combine:       o.Behavior.Enabled(CombineDecls),
+	}
 
 	// Remember the current file over all functions declared in it
 	var currentFile CurrentFile
+
 	// Loop over all function and method declarations
-	in.Root().Inspect(
-		[]ast.Node{(*ast.File)(nil), (*ast.FuncDecl)(nil)},
-		func(c inspector.Cursor) bool {
-			switch n := c.Node().(type) {
-			case *ast.File:
-				currentFile = NewCurrentFile(p.Fset, n)
+	root, types := in.Root(), []ast.Node{
+		(*ast.File)(nil),
+		(*ast.FuncDecl)(nil),
+	}
 
-				return o.Generated || !currentFile.Generated()
+	// Loop over all function and method declarations
+	root.Inspect(types, func(c inspector.Cursor) bool {
+		switch node := c.Node().(type) {
+		case *ast.File:
+			currentFile = NewCurrentFile(p.Fset, node)
+			descend := o.Behavior.Enabled(IncludeGenerated) || !currentFile.Generated()
 
-			case *ast.FuncDecl:
-				if n.Body == nil {
-					return false
-				}
+			return descend
 
-				if !currentFile.Valid() {
-					p.ReportInternalError(n, "Function declaration %s without file info", n.Name.Name)
+		case *ast.FuncDecl:
+			if node.Body == nil {
+				return false
+			}
 
-					return false
-				}
-
-				// Stage 1: Collect all movable variable declarations and track variable uses
-				body, funcType := c.ChildAt(edge.FuncDecl_Body, -1), n.Type
-				usageScopes, usedAfterShadow, nestedAssigned := Usage(ctx, p, scopes, body, funcType, o.ScopeLevel, o.ShadowLevel, o.NestedAssign)
-
-				// Report nested assignments
-				nestedAssigned.Report(ctx, p.Pass, currentFile)
-
-				// Report variables used after shadowed
-				usedAfterShadow.Report(ctx, p.Pass, in, currentFile)
-
-				if len(usageScopes.ScopeRanges) == 0 {
-					return false // No movable variable declarations
-				}
-
-				conservative := o.ScopeLevel == level.ScopeConservative
-
-				// Stage 2: compute minimum safe scopes, select target nodes and resolve conflicts
-				targets := Targets(ctx, p, in, TargetOptions{
-					ScopeAnalyzer: scopes,
-					CurrentFile:   currentFile,
-					UsageResult:   usageScopes,
-					MaxLines:      o.MaxLines,
-					Conservative:  conservative,
-				})
-
-				// Stage 3: Generate diagnostics with suggested fixes
-				Report(ctx, p, in, targets, conservative)
-
-				return true
-
-			default:
-				p.ReportInternalError(n, "Unexpected node type: %T", n)
+			if !currentFile.Valid() {
+				p.ReportInternalError(node, "Function declaration %s without file info", node.Name.Name)
 
 				return false
 			}
-		},
-	)
+
+			// Skip functions with nolint comment
+			if node.Doc != nil && CommentHasNoLint(node.Doc.List[len(node.Doc.List)-1]) {
+				return false
+			}
+
+			body := c.ChildAt(edge.FuncDecl_Body, -1)
+
+			// Stage 1: Collect all movable variable declarations and track variable uses
+			usageData, usageDiagnostics := ua.Analyze(ctx, body, node)
+
+			var moves []MoveTarget
+
+			// Stage 2: compute minimum safe scopes, select target nodes and resolve conflicts
+			if len(usageData.ScopeRanges) > 0 {
+				// There are movable variable declarations
+				moves = ta.Analyze(ctx, currentFile, body, usageData)
+			}
+
+			// Stage 3: Generate diagnostics with suggested fixes
+			reportData := ReportData{
+				Moves:            moves,
+				UsageDiagnostics: usageDiagnostics,
+			}
+			Report(ctx, p, in, c, currentFile, reportData, o.Behavior)
+
+			return true
+
+		default:
+			p.ReportInternalError(node, "Unexpected node type: %T", node)
+
+			return false
+		}
+	})
 
 	return nil, nil
 }

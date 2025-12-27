@@ -1,0 +1,66 @@
+// Copyright 2026 Oliver Eikemeier. All Rights Reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+//
+// SPDX-License-Identifier: Apache-2.0
+
+package combine
+
+import "fmt"
+
+func combine() {
+	x := 1 // want "Variable 'x' can be moved to tighter if scope"
+	y := 2 // want "Variable 'y' can be moved to tighter if scope"
+	if x < y {
+		fmt.Println(x, y)
+	}
+}
+
+func combineNested() {
+	x := 1 // want "Variable 'x' can be moved to tighter if scope"
+	y := 2 // want "Variable 'y' can be moved to tighter if scope"
+	{
+		if x < y {
+			fmt.Println(x, y)
+		}
+	}
+}
+
+func nested() {
+	x := 1 // want "Variable 'x' can be moved to tighter if scope"
+	{
+		y := 2 // want "Variable 'y' can be moved to tighter if scope"
+		{
+			if x < y {
+				fmt.Println(x, y)
+			}
+		}
+	}
+}
+
+func dependent() {
+	x := 1
+	y := x + 1 // want "Variable 'y' can be moved to tighter if scope"
+	if x < y {
+		fmt.Println(x, y)
+	}
+}
+
+func multivalue() {
+	x := 1                                           // want "Variable 'x' can be moved to tighter if scope"
+	y, ok := func() (int, bool) { return 2, true }() // want "Variables 'y' and 'ok' can be moved to tighter if scope"
+
+	if x == 1 && ok {
+		fmt.Println(x, y)
+	}
+}

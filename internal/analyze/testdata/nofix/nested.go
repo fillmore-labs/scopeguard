@@ -14,5 +14,41 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-// Package level defines configuration levels for the scopeguard analyzer.
-package level
+package nofix
+
+func nested() {
+	var err error
+
+	{
+		err := error(nil)
+		_ = err
+	}
+
+	err = func() error {
+		err = error(nil) // want "Nested reassignment of variable 'err'"
+		return err
+	}()
+
+	_ = err
+}
+
+func nestedOk() {
+	var err error
+
+	{
+		err := error(nil)
+		_ = err
+	}
+
+	err = func() error {
+		err := error(nil)
+		return err
+	}()
+
+	_ = func() error {
+		err := error(nil)
+		return err
+	}
+
+	_ = err
+}

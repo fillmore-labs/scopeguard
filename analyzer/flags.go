@@ -1,4 +1,4 @@
-// Copyright 2025 Oliver Eikemeier. All Rights Reserved.
+// Copyright 2025-2026 Oliver Eikemeier. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -24,14 +24,36 @@ import (
 
 // RegisterFlags binds the [Options] values to command line flag values.
 // A nil flag set value defaults to the program's command line.
-func registerFlags(o *analyze.Options, flags *flag.FlagSet) {
+func registerFlags(flags *flag.FlagSet, o *analyze.Options) {
 	if flags == nil {
 		flags = flag.CommandLine
 	}
 
-	flags.BoolVar(&o.Generated, "generated", o.Generated, "check generated files")
+	analyzers := analyzeFlags[analyze.Analyzer]{
+		{analyze.ScopeAnalyzer, "scope", "scope analysis"},
+		{analyze.ShadowAnalyzer, "shadow", "shadow analysis"},
+		{analyze.NestedAssignAnalyzer, "nested-assign", "nested assign analysis"},
+	}
+
+	config := analyzeFlags[analyze.Config]{
+		{analyze.IncludeGenerated, "generated", "check generated files"},
+		{analyze.Conservative, "conservative", "enable conservative scope analysis"},
+		{analyze.CombineDecls, "combine", "combine declaration when moving to initializers"},
+		{analyze.RenameVars, "rename", "rename shadowed variables (experimental)"},
+	}
+
+	analyzers.register(flags, &o.Analyzers)
+	config.register(flags, &o.Behavior)
 	flags.IntVar(&o.MaxLines, "max-lines", o.MaxLines, "maximum declaration lines for moving to initializers")
-	flags.TextVar(&o.ScopeLevel, "scope", o.ScopeLevel, "scope analysis `level`, \"full\", \"conservative\" or \"off\"")
-	flags.TextVar(&o.ShadowLevel, "shadow", o.ShadowLevel, "shadow analysis `level`, \"full\" or \"off\"")
-	flags.TextVar(&o.NestedAssign, "nested-assign", o.NestedAssign, "nested assign `level`, \"full\" or \"off\"")
+}
+
+type analyzeFlags[T ~uint8] []struct {
+	flag        T
+	name, usage string
+}
+
+func (a analyzeFlags[T]) register(flags *flag.FlagSet, b *analyze.BitMask[T]) {
+	for _, f := range a {
+		flags.Var(boolValue[T, *analyze.BitMask[T]]{b, f.flag}, f.name, f.usage)
+	}
 }

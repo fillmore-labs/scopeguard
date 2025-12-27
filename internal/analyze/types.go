@@ -1,4 +1,4 @@
-// Copyright 2025 Oliver Eikemeier. All Rights Reserved.
+// Copyright 2025-2026 Oliver Eikemeier. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -35,28 +35,19 @@ type ScopeRange struct {
 	Usage *types.Scope
 }
 
-// UsageResult contains the scope analysis for all variable declarations from stage 1.
-type UsageResult struct {
-	// Map from declaration indices to their computed scope ranges.
-	ScopeRanges map[NodeIndex]ScopeRange
-
-	// Map of variables to usage.
-	Usages map[*types.Var][]NodeUsage
-}
-
 // ShadowUse contains information about a variable use after previously shadowed.
 type ShadowUse struct {
 	Var       *types.Var
 	Use, Decl NodeIndex
 }
 
-// ShadowUsed contains information about variables use after previously shadowed.
-type ShadowUsed []ShadowUse
+// UsedAfterShadow contains information about variables use after previously shadowed.
+type UsedAfterShadow []ShadowUse
 
 // NestedAssign contains information about a nested variable assign.
 type NestedAssign struct {
 	id   *ast.Ident
-	stmt ast.Node
+	asgn NodeIndex
 }
 
 // NestedAssigned contains information about nested variable assigns.
@@ -74,27 +65,51 @@ type UsageFlags uint8
 const (
 	// UsageUsed indicates the variable declaration is used.
 	UsageUsed UsageFlags = 1 << iota
+
 	// UsageTypeChange indicates the variable redeclaration implies a type change.
 	UsageTypeChange
-	// UsageUntypedNil indicates the variable redeclaration is assigned an untyped nil.
+
+	// UsageUntypedNil indicates the variable redeclaration is assigned to untyped nil.
 	UsageUntypedNil
 
 	// UsageNone indicates the variable declaration is unused.
 	UsageNone UsageFlags = 0
+
+	// UsageUsedAndTypeChange represents a combination of [UsageUsed] and [UsageTypeChange] flags.
+	UsageUsedAndTypeChange = UsageUsed | UsageTypeChange
 )
 
 // MoveTarget represents a declaration that can be moved to a tighter scope.
 type MoveTarget struct {
-	TargetNode ast.Node   // The node with the target scope (e.g., *[ast.IfStmt], *[ast.BlockStmt])
-	Unused     []string   // Unused identifiers in this declaration
-	Decl       NodeIndex  // Inspector index of the declaration statement to move
-	Status     MoveStatus // Status indicating if the move is safe or why it isn't
+	MovableDecl                 // The declaration to move
+	TargetNode    ast.Node      // The node with the target scope (e.g., *[ast.IfStmt], *[ast.BlockStmt])
+	AbsorbedDecls []MovableDecl // Additional declarations merged into this one
+	Status        MoveStatus    // Status indicating if the move is safe or why it isn't
 }
 
-// TargetResult is the complete set of declarations that can be moved to tighter scopes.
-//
-// This slice is sorted by source position to ensure
-// deterministic diagnostic ordering in the analyzer output.
-type TargetResult struct {
-	Move []MoveTarget
+// MovableDecl represents a declaration that can be moved to another scope in the code analysis process.
+type MovableDecl struct {
+	Decl   NodeIndex // Inspector index of the declaration statement to move
+	Unused []string  // Unused identifiers in this declaration
+}
+
+// UsageData contains the scope analysis for all variable declarations from stage 1.
+type UsageData struct {
+	// Map from declaration indices to their computed scope ranges.
+	ScopeRanges map[NodeIndex]ScopeRange
+
+	// Map of variables to usage.
+	Usages map[*types.Var][]NodeUsage
+}
+
+// UsageDiagnostics contains findings from the usage analysis stage.
+type UsageDiagnostics struct {
+	Shadows UsedAfterShadow
+	Nested  NestedAssigned
+}
+
+// ReportData aggregates all analysis findings for the reporting stage.
+type ReportData struct {
+	Moves []MoveTarget
+	UsageDiagnostics
 }

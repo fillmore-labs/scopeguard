@@ -1,4 +1,4 @@
-// Copyright 2025 Oliver Eikemeier. All Rights Reserved.
+// Copyright 2025-2026 Oliver Eikemeier. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -14,7 +14,7 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-package c
+package conservative
 
 import "fmt"
 
@@ -46,21 +46,37 @@ func baz() {
 }
 
 func safe() {
-	// want "Variable 'x' can be moved to tighter if scope"
+	x := 1 // want "Variable 'x' can be moved to tighter if scope"
 	const c = 2
+	var v string = "1"
 	{
 		type T int
 	}
-	if x := 1; x > 0 {
-		fmt.Println(c)
+	if x > 0 {
+		fmt.Println(c, v)
 	}
 }
 
 func unsafeVar() {
 	x := 0
 	incX := func() int { x++; return x }
-	y := incX()
+
+	x, y := 0, 1
+	var _ int = incX()
 	if x > 0 {
 		fmt.Println(y)
+	}
+}
+
+func labeledStatement() {
+	x := 0
+	incX := func() { x++ }
+
+label:
+	x, y := 0, 1
+	incX()
+	if x == 0 {
+		fmt.Println(x, y)
+		goto label
 	}
 }

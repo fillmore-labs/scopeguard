@@ -47,7 +47,7 @@ jobs:
         uses: golangci/golangci-lint-action@1e7e51e771db61008b38414a730f564565cf7c20  # v9.2.0
         if: ${{ matrix.latest }}
         with:
-          version: v2.7.2
+          version: v2.8.0
           verify: false
       - name: 🔨 Test
         run: |

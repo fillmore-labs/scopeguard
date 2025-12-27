@@ -1,4 +1,4 @@
-// Copyright 2025 Oliver Eikemeier. All Rights Reserved.
+// Copyright 2025-2026 Oliver Eikemeier. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -33,11 +33,11 @@ func redeclared() {
 	}
 }
 
-// Conflicting, if a, b := 1, 2; ... { is not implemented
+// Conflicting
 func multiVar() {
-	a := 1 // want "Variable 'a' can be moved to tighter if scope"
-	b := 2 // want "Variable 'b' can be moved to tighter if scope"
-	if a == 1 && b == 2 {
+	// want "Variable 'a' can be moved to tighter if scope"
+	// want "Variable 'b' can be moved to tighter if scope"
+	if a, b := 1, 2; a == 1 && b == 2 {
 		fmt.Println("1, 2")
 	}
 }
@@ -142,13 +142,15 @@ func selectStatement() {
 
 // Variable used in labeled loop statement.
 func labeledStatement() {
-	// want "Variable 'x' can be moved to tighter for scope"
-outer:
-	for x := 1; ; {
-		if x == 1 {
-			break outer
+	// want "Variable 'x' can be moved to tighter if scope"
+	if x := 1; x == 1 {
+	outer:
+		for {
+			if x > 1 {
+				break outer
+			}
+			x++
 		}
-		x++
 	}
 }
 
@@ -227,23 +229,22 @@ func redec() {
 		Foo() bool
 	}
 
-	var err error
+	e := func(i int) (int, error) { return i, nil }
+	f := func(i int) (int, fooError) { return i, nil }
 
-	a, err := func() (int, fooError) {
-		return 1, nil
-	}()
-	if err != nil {
-		return
+	a, err := e(1) // want "Variables 'a' and 'err' can be moved to tighter block scope"
+	{
+		_ = a
 	}
 
-	b, err := func() (int, error) {
-		return 2, nil
-	}()
-	if err != nil {
-		return
+	b, err := f(1)
+	if err == nil {
+		b = 0
 	}
+	_ = b
 
-	fmt.Println(a, b)
+	c, err := e(1)
+	_ = c
 }
 
 type T struct{ a int }
@@ -263,7 +264,7 @@ func compositeLiteralCall() {
 func compositeLiteralOkay() {
 	// want "Variables 'x' and 'y' can be moved to tighter if scope"
 
-	if x, y := 1, (func(t T) int { return t.value() }(T{1})); x == 1 {
+	if x, y := 1, func(t T) int { return t.value() }(T{1}); x == 1 {
 		fmt.Println(y)
 	}
 }

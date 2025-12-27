@@ -1,4 +1,4 @@
-// Copyright 2025 Oliver Eikemeier. All Rights Reserved.
+// Copyright 2025-2026 Oliver Eikemeier. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -20,27 +20,30 @@ import (
 	"context"
 	"fmt"
 	"runtime/trace"
+	"slices"
 
 	"golang.org/x/tools/go/analysis"
 	"golang.org/x/tools/go/ast/inspector"
 )
 
-// Report emits diagnostics for nested assigned of variables.
-func (n NestedAssigned) Report(ctx context.Context, p *analysis.Pass, currentFile CurrentFile) {
+// Report emits diagnostics for nested assigns of variables.
+func (n NestedAssigned) Report(ctx context.Context, p *analysis.Pass, in *inspector.Inspector, currentFile CurrentFile) {
 	defer trace.StartRegion(ctx, "ReportNestedAssigned").End()
 
 	for _, assignment := range n {
-		if currentFile.HasNoLintComment(assignment.id.Pos()) {
+		if currentFile.NoLintComment(assignment.id.NamePos) {
 			continue
 		}
+
+		stmt := in.At(assignment.asgn).Node()
 
 		p.Report(analysis.Diagnostic{
 			Pos:     assignment.id.Pos(),
 			End:     assignment.id.End(),
 			Message: fmt.Sprintf("Nested reassignment of variable '%s' (sg:nst)", assignment.id.Name),
 			Related: []analysis.RelatedInformation{{
-				Pos:     assignment.stmt.Pos(),
-				End:     assignment.stmt.End(),
+				Pos:     stmt.Pos(),
+				End:     stmt.End(),
 				Message: "Inside this assign statement",
 			}},
 		})
@@ -48,21 +51,41 @@ func (n NestedAssigned) Report(ctx context.Context, p *analysis.Pass, currentFil
 }
 
 // Report emits diagnostics for variables used after previously shadowed.
-func (s ShadowUsed) Report(ctx context.Context, p *analysis.Pass, in *inspector.Inspector, currentFile CurrentFile) {
+func (u UsedAfterShadow) Report(ctx context.Context, p *analysis.Pass, fdecl inspector.Cursor, currentFile CurrentFile, rename bool) bool {
 	defer trace.StartRegion(ctx, "ReportShadowed").End()
 
-	for _, shadowed := range s {
+	slices.SortFunc(u, func(a, b ShadowUse) int { return int(a.Use - b.Use) })
+
+	var renamer *Renamer
+	if rename {
+		renamer = NewRenamer()
+	}
+
+	hadFixes := false
+
+	in := fdecl.Inspector()
+
+	for _, shadowed := range u {
 		use := in.At(shadowed.Use).Node()
-		if currentFile.HasNoLintComment(use.Pos()) {
+		if currentFile.NoLintComment(use.Pos()) {
 			continue
+		}
+
+		suggestedFixes := renamer.Renames(p.TypesInfo, fdecl, shadowed.Var)
+
+		if len(suggestedFixes) > 0 {
+			hadFixes = true
 		}
 
 		name, decl := shadowed.Var.Name(), in.At(shadowed.Decl).Node()
 		p.Report(analysis.Diagnostic{
-			Pos:     use.Pos(),
-			End:     use.End(),
-			Message: fmt.Sprintf("Identifier '%s' used after previously shadowed (sg:uas)", name),
-			Related: []analysis.RelatedInformation{{Pos: decl.Pos(), End: decl.Pos(), Message: "After this declaration"}},
+			Pos:            use.Pos(),
+			End:            use.End(),
+			Message:        fmt.Sprintf("Identifier '%s' used after previously shadowed (sg:uas)", name),
+			Related:        []analysis.RelatedInformation{{Pos: decl.Pos(), End: decl.Pos(), Message: "After this declaration"}},
+			SuggestedFixes: suggestedFixes,
 		})
 	}
+
+	return hadFixes
 }

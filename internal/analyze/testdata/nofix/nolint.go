@@ -1,4 +1,4 @@
-// Copyright 2025 Oliver Eikemeier. All Rights Reserved.
+// Copyright 2025-2026 Oliver Eikemeier. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -14,7 +14,7 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-package b
+package nofix
 
 import "fmt"
 
@@ -23,4 +23,34 @@ func noLint() {
 	if true {
 		fmt.Println(x)
 	}
+}
+
+//nolint:scopeguard
+func noLintFunction() {
+	x := 1
+	if true {
+		fmt.Println(x)
+	}
+}
+
+func noLintNested() {
+	var err error
+
+	err = func() error {
+		err = error(nil) //nolint:scopeguard
+		return err
+	}()
+
+	_ = err
+}
+
+func noLintSshadowed() (i int) {
+	i, a := -1, true
+
+	if a {
+		i := -i
+		return i
+	}
+
+	return //nolint:scopeguard
 }

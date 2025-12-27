@@ -26,7 +26,7 @@ func New(opts ...Option) *analysis.Analyzer {
 	o := makeOptions(opts)
 
 	a := o.Analyzer()
-	registerFlags(o, &a.Flags)
+	registerFlags(&a.Flags, o)
 
 	return a
 }

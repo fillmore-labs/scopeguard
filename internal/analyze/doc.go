@@ -1,4 +1,4 @@
-// Copyright 2025 Oliver Eikemeier. All Rights Reserved.
+// Copyright 2025-2026 Oliver Eikemeier. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -55,23 +55,4 @@
 //
 //   - Init fields: if, for, switch, type switch statements
 //   - Block scopes: BlockStmt, CaseClause (switch/select cases)
-//
-// # Safety Constraints
-//
-// The analyzer prevents moves that would change program semantics:
-//
-//   - Loop bodies: Variables can move TO a for loop's Init field, but NOT into
-//     the loop body (which would change the variable's lifetime)
-//   - Function literals: Variables CANNOT cross function boundaries (would
-//     change closure capture semantics)
-//
-// # Current Limitations
-//
-//   - Does not combine multiple single-variable declarations into one multi-value
-//     declaration (a := 1; b := 2 -> a, b := 1, 2)
-//
-// # Special handling:
-//
-//   - Composite literals in Init fields require parentheses (Go spec requirement)
-//   - While-style for loops need an extra semicolon when adding an Init field
 package analyze

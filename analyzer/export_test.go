@@ -1,4 +1,4 @@
-// Copyright 2025 Oliver Eikemeier. All Rights Reserved.
+// Copyright 2026 Oliver Eikemeier. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -14,23 +14,16 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-package b
+package analyzer
 
-import "fmt"
+import (
+	"flag"
 
-func recoveredReturn() {
-	f := func() (int, bool) { return 1, true }
+	"fillmore-labs.com/scopeguard/internal/analyze"
+)
 
-	// This function has a named result parameter, but the usage is not detected
-	v := func() (r int) {
-		defer func() { _ = recover() }()
-		r, ok := f() //nolint:scopeguard usage of r not detected
-		if ok {
-			_ = r // use r
-		}
-
-		panic("recovered")
-	}()
-
-	fmt.Println(v)
+// NewAnalyzerValue returns a new flag.Value that maps to the specified flag bit.
+// It is used to export the unexported flagValue type for testing.
+func NewAnalyzerValue(flags *analyze.BitMask[analyze.Analyzer], value analyze.Analyzer) flag.Getter {
+	return boolValue[analyze.Analyzer, *analyze.BitMask[analyze.Analyzer]]{flags: flags, value: value}
 }
