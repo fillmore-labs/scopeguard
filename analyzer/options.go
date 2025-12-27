@@ -1,4 +1,4 @@
-// Copyright 2025 Oliver Eikemeier. All Rights Reserved.
+// Copyright 2025-2026 Oliver Eikemeier. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -19,22 +19,13 @@ package analyzer
 import (
 	"log/slog"
 
-	"fillmore-labs.com/scopeguard/analyzer/level"
-	"fillmore-labs.com/scopeguard/internal/analyze"
+	"fillmore-labs.com/scopeguard/internal/config"
 )
-
-// makeOptions returns a [analyze.Options] struct with overriding [Options] applied.
-func makeOptions(opts Options) *analyze.Options {
-	o := analyze.DefaultOptions()
-	opts.apply(o)
-
-	return o
-}
 
 // Option configures specific behavior of a [New] scopeguard analyzer.
 type Option interface {
-	apply(opts *analyze.Options)
-	logAttr() slog.Attr
+	apply(r *runOptions)
+	LogAttr() slog.Attr
 }
 
 // Options is a list of [Option] values that itself satisfies the [Option] interface.
@@ -43,20 +34,40 @@ type Options []Option
 // LogValue implements [slog.LogValuer].
 func (o Options) LogValue() slog.Value {
 	as := make([]slog.Attr, 0, len(o))
-	for _, opt := range o {
-		as = append(as, opt.logAttr())
-	}
+	as = appendOptions(as, o)
 
 	return slog.GroupValue(as...)
 }
 
-func (o Options) apply(opts *analyze.Options) {
+func appendOptions(as []slog.Attr, o Options) []slog.Attr {
 	for _, opt := range o {
-		opt.apply(opts)
+		switch opt := opt.(type) {
+		case nil:
+			as = append(as, slog.String("nil", "<nil>"))
+
+		case Options:
+			as = appendOptions(as, opt)
+
+		default:
+			as = append(as, opt.LogAttr())
+		}
+	}
+
+	return as
+}
+
+func (o Options) apply(r *runOptions) {
+	for _, opt := range o {
+		if opt == nil {
+			continue
+		}
+
+		opt.apply(r)
 	}
 }
 
-func (o Options) logAttr() slog.Attr {
+// LogAttr is for logging with [slog.Logger.LogAttrs].
+func (o Options) LogAttr() slog.Attr {
 	return slog.Any("options", o)
 }
 
@@ -65,11 +76,11 @@ func WithGenerated(generated bool) Option { return generatedOption{generated: ge
 
 type generatedOption struct{ generated bool }
 
-func (o generatedOption) apply(opts *analyze.Options) {
-	opts.Generated = o.generated
+func (o generatedOption) apply(r *runOptions) {
+	r.behavior.Set(config.IncludeGenerated, o.generated)
 }
 
-func (o generatedOption) logAttr() slog.Attr {
+func (o generatedOption) LogAttr() slog.Attr {
 	return slog.Bool("generated", o.generated)
 }
 
@@ -78,70 +89,96 @@ func WithMaxLines(maxLines int) Option { return maxLinesOption{maxLines: maxLine
 
 type maxLinesOption struct{ maxLines int }
 
-func (o maxLinesOption) apply(opts *analyze.Options) {
-	opts.MaxLines = o.maxLines
+func (o maxLinesOption) apply(r *runOptions) {
+	r.maxLines = o.maxLines
 }
 
-func (o maxLinesOption) logAttr() slog.Attr {
+func (o maxLinesOption) LogAttr() slog.Attr {
 	return slog.Int("maxLines", o.maxLines)
 }
 
-// WithScope is an [Option] to configure which scope checks are enabled.
-func WithScope(scope level.Scope) Option {
+// WithScope is an [Option] to configure whether scope checks are enabled.
+func WithScope(scope bool) Option {
 	return scopeOption{scope: scope}
 }
 
-type scopeOption struct{ scope level.Scope }
+type scopeOption struct{ scope bool }
 
-func (o scopeOption) apply(opts *analyze.Options) {
-	opts.ScopeLevel = o.scope
+func (o scopeOption) apply(r *runOptions) {
+	r.analyzers.Set(config.ScopeAnalyzer, o.scope)
 }
 
-func (o scopeOption) logAttr() slog.Attr {
-	text, err := o.scope.MarshalText()
-	if err != nil {
-		return slog.String("scope", err.Error())
-	}
-
-	return slog.String("scope", string(text))
+func (o scopeOption) LogAttr() slog.Attr {
+	return slog.Bool("scope", o.scope)
 }
 
-// WithShadow is an [Option] to configure which shadow checks are enabled.
-func WithShadow(shadow level.Shadow) Option {
+// WithShadow is an [Option] to configure whether shadow checks are enabled.
+func WithShadow(shadow bool) Option {
 	return shadowOption{shadow: shadow}
 }
 
-type shadowOption struct{ shadow level.Shadow }
+type shadowOption struct{ shadow bool }
 
-func (o shadowOption) apply(opts *analyze.Options) {
-	opts.ShadowLevel = o.shadow
+func (o shadowOption) apply(r *runOptions) {
+	r.analyzers.Set(config.ShadowAnalyzer, o.shadow)
 }
 
-func (o shadowOption) logAttr() slog.Attr {
-	text, err := o.shadow.MarshalText()
-	if err != nil {
-		return slog.String("shadow", err.Error())
-	}
-
-	return slog.String("shadow", string(text))
+func (o shadowOption) LogAttr() slog.Attr {
+	return slog.Bool("shadow", o.shadow)
 }
 
-// WithNestedAssign is an [Option] to configure which nested assign checks are enabled.
-func WithNestedAssign(nestedAssign level.NestedAssign) Option {
+// WithNestedAssign is an [Option] to configure whether nested assign checks are enabled.
+func WithNestedAssign(nestedAssign bool) Option {
 	return nestedAssignOption{nestedAssign: nestedAssign}
 }
 
-type nestedAssignOption struct{ nestedAssign level.NestedAssign }
+type nestedAssignOption struct{ nestedAssign bool }
 
-func (o nestedAssignOption) apply(opts *analyze.Options) {
-	opts.NestedAssign = o.nestedAssign
+func (o nestedAssignOption) apply(r *runOptions) {
+	r.analyzers.Set(config.NestedAssignAnalyzer, o.nestedAssign)
 }
 
-func (o nestedAssignOption) logAttr() slog.Attr {
-	text, err := o.nestedAssign.MarshalText()
-	if err != nil {
-		return slog.String("nested-assign", err.Error())
-	}
+func (o nestedAssignOption) LogAttr() slog.Attr {
+	return slog.Bool("nested-assign", o.nestedAssign)
+}
 
-	return slog.String("nested-assign", string(text))
+// WithConservative is an [Option] to only permit moves without potential side effects.
+func WithConservative(conservative bool) Option {
+	return conservativeOption{conservative: conservative}
+}
+
+type conservativeOption struct{ conservative bool }
+
+func (o conservativeOption) apply(r *runOptions) {
+	r.behavior.Set(config.Conservative, o.conservative)
+}
+
+func (o conservativeOption) LogAttr() slog.Attr {
+	return slog.Bool("conservative", o.conservative)
+}
+
+// WithCombine is an [Option] to configure combining declaration when moving to control flow initializers.
+func WithCombine(combine bool) Option { return combineOption{combine: combine} }
+
+type combineOption struct{ combine bool }
+
+func (o combineOption) apply(r *runOptions) {
+	r.behavior.Set(config.CombineDeclarations, o.combine)
+}
+
+func (o combineOption) LogAttr() slog.Attr {
+	return slog.Bool("combine", o.combine)
+}
+
+// WithRename is an [Option] to configure renaming shadowed variables.
+func WithRename(rename bool) Option { return renameOption{rename: rename} }
+
+type renameOption struct{ rename bool }
+
+func (o renameOption) apply(r *runOptions) {
+	r.behavior.Set(config.RenameVariables, o.rename)
+}
+
+func (o renameOption) LogAttr() slog.Attr {
+	return slog.Bool("rename", o.rename)
 }

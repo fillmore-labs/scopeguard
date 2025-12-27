@@ -1,4 +1,4 @@
-// Copyright 2025 Oliver Eikemeier. All Rights Reserved.
+// Copyright 2025-2026 Oliver Eikemeier. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -16,59 +16,47 @@
 
 package gclplugin
 
-import (
-	"reflect"
+import scopeguard "fillmore-labs.com/scopeguard/analyzer"
 
-	scopeguard "fillmore-labs.com/scopeguard/analyzer"
-	"fillmore-labs.com/scopeguard/analyzer/level"
-)
-
-// Settings represent the configuration options for an instance of the [Plugin].
+// Settings represents the configuration options for an instance of the [Plugin].
 type Settings struct {
-	Scope        *level.Scope        `json:"scope,omitzero"`
-	Shadow       *level.Shadow       `json:"shadow,omitzero"`
-	NestedAssign *level.NestedAssign `json:"nested-assign,omitzero"`
-	MaxLines     *int                `json:"max-lines,omitzero"`
+	// Scope enables scope checks.
+	Scope *bool `json:"scope,omitzero"`
+	// Shadow enables shadow checks.
+	Shadow *bool `json:"shadow,omitzero"`
+	// NestedAssign enables nested assignment checks.
+	NestedAssign *bool `json:"nested-assign,omitzero"`
+	// Conservative restricts moves to those without potential side effects.
+	Conservative *bool `json:"conservative,omitzero"`
+	// Combine enables combining declarations when moving to control flow initializers.
+	Combine *bool `json:"combine,omitzero"`
+	// Rename enables renaming of shadowed variables.
+	Rename *bool `json:"rename,omitzero"`
+	// MaxLines sets the maximum declaration size for moving to control flow initializers.
+	MaxLines *int `json:"max-lines,omitzero"`
 }
 
-// Options converts [Settings] into [scopeguard.Options] for the scopeguard analyzer.
+// Options converts [Settings] into a list of [scopeguard.Option] for the scopeguard analyzer.
 // It processes settings and applies them only when explicitly set (non-nil).
-func (s Settings) Options() scopeguard.Options {
-	settings := mapping{
-		{scopeguard.WithScope, s.Scope},
-		{scopeguard.WithShadow, s.Shadow},
-		{scopeguard.WithNestedAssign, s.NestedAssign},
-		{scopeguard.WithMaxLines, s.MaxLines},
-	}
+func (s Settings) Options() []scopeguard.Option {
+	var opts []scopeguard.Option
 
-	return settings.options()
-}
-
-type mapping []struct {
-	fun   any // func(T) scopeguard.Option
-	value any // *T
-}
-
-func (m mapping) options() scopeguard.Options {
-	var opts scopeguard.Options
-
-	for _, opt := range m {
-		// var v *T = opt.value
-		// if v == nil {
-		//	continue
-		// }
-		v := reflect.ValueOf(opt.value)
-		if v.IsNil() {
-			continue
-		}
-
-		// var f func(T) scopeguard.Option = opt.fun
-		// result := f(*v)
-		f := reflect.ValueOf(opt.fun)
-		result := f.Call([]reflect.Value{v.Elem()})[0].Interface().(scopeguard.Option)
-
-		opts = append(opts, result)
-	}
+	opts = appendOption(opts, s.Scope, scopeguard.WithScope)
+	opts = appendOption(opts, s.Shadow, scopeguard.WithShadow)
+	opts = appendOption(opts, s.NestedAssign, scopeguard.WithNestedAssign)
+	opts = appendOption(opts, s.Conservative, scopeguard.WithConservative)
+	opts = appendOption(opts, s.Combine, scopeguard.WithCombine)
+	opts = appendOption(opts, s.Rename, scopeguard.WithRename)
+	opts = appendOption(opts, s.MaxLines, scopeguard.WithMaxLines)
 
 	return opts
+}
+
+// appendOption appends a non-nil setting to a [scopeguard.Option] list.
+func appendOption[T any](opts []scopeguard.Option, value *T, constructor func(T) scopeguard.Option) []scopeguard.Option {
+	if value == nil {
+		return opts
+	}
+
+	return append(opts, constructor(*value))
 }

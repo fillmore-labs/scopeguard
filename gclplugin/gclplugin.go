@@ -47,7 +47,8 @@ func (Plugin) GetLoadMode() string {
 
 // BuildAnalyzers returns the [analysis.Analyzer]s for a scopeguard run.
 func (p Plugin) BuildAnalyzers() ([]*analysis.Analyzer, error) {
-	a := scopeguard.New(scopeguard.WithGenerated(true), p.settings.Options())
+	opts := append(p.settings.Options(), scopeguard.WithGenerated(true))
+	a := scopeguard.New(opts...)
 
 	return []*analysis.Analyzer{a}, nil
 }

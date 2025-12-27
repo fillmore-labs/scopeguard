@@ -16,5 +16,6 @@ steps:
       GOTOOLCHAIN: local
     commands:
       - go telemetry on
+      - go mod download
       - echo "🔨 Testing on $(go version):"
       - go test ./...

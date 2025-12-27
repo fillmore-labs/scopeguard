@@ -1,4 +1,4 @@
-// Copyright 2025 Oliver Eikemeier. All Rights Reserved.
+// Copyright 2025-2026 Oliver Eikemeier. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -22,7 +22,7 @@ Package gclplugin provides golangci-lint plugin integration for the [scopeguard]
 1. Add a file `.custom-gcl.yaml` to your source with:
 
 	---
-	version: v2.7.2
+	version: v2.8.0
 
 	name: golangci-lint
 	destination: .
@@ -30,7 +30,7 @@ Package gclplugin provides golangci-lint plugin integration for the [scopeguard]
 	plugins:
 	  - module: fillmore-labs.com/scopeguard
 	    import: fillmore-labs.com/scopeguard/gclplugin
-	    version: v0.0.3
+	    version: v0.0.4
 
 2. Run `golangci-lint custom` from your project root.
 

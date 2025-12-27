@@ -1,4 +1,4 @@
-// Copyright 2025 Oliver Eikemeier. All Rights Reserved.
+// Copyright 2025-2026 Oliver Eikemeier. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -18,28 +18,33 @@ package gclplugin_test
 
 import (
 	"encoding/json"
+	"reflect"
 	"strings"
 	"testing"
 
+	scopeguard "fillmore-labs.com/scopeguard/analyzer"
 	. "fillmore-labs.com/scopeguard/gclplugin"
 )
 
 const allSettings = `{
-	"scope": "conservative",
-	"shadow": "off",
-	"nested-assign": "off",
+	"scope": true,
+	"shadow": true,
+	"nested-assign": true,
+	"conservative": false,
+	"combine": true,
+	"rename": true,
 	"max-lines": 10
 }`
 
 func TestSettings(t *testing.T) {
 	t.Parallel()
 
-	testCases := []struct {
+	testCases := [...]struct {
 		name     string
 		settings string
 		want     int
 	}{
-		{"all", allSettings, 4},
+		{"all", allSettings, reflect.TypeFor[Settings]().NumField()},
 		{"none", `{}`, 0},
 	}
 
@@ -55,10 +60,8 @@ func TestSettings(t *testing.T) {
 				t.Fatalf("Can't decode settings: %v", err)
 			}
 
-			opts := s.Options()
-
-			if got := opts.LogValue().Group(); len(got) != tc.want {
-				t.Errorf("Got options %v, want %d", got, tc.want)
+			if got := s.Options(); len(got) != tc.want {
+				t.Errorf("Got %d options: %s, want %d", len(got), scopeguard.Options(got).LogValue(), tc.want)
 			}
 		})
 	}

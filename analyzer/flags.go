@@ -1,4 +1,4 @@
-// Copyright 2025 Oliver Eikemeier. All Rights Reserved.
+// Copyright 2025-2026 Oliver Eikemeier. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -19,19 +19,41 @@ package analyzer
 import (
 	"flag"
 
-	"fillmore-labs.com/scopeguard/internal/analyze"
+	"fillmore-labs.com/scopeguard/internal/config"
 )
 
 // RegisterFlags binds the [Options] values to command line flag values.
 // A nil flag set value defaults to the program's command line.
-func registerFlags(o *analyze.Options, flags *flag.FlagSet) {
+func registerFlags(flags *flag.FlagSet, r *runOptions) {
 	if flags == nil {
 		flags = flag.CommandLine
 	}
 
-	flags.BoolVar(&o.Generated, "generated", o.Generated, "check generated files")
-	flags.IntVar(&o.MaxLines, "max-lines", o.MaxLines, "maximum declaration lines for moving to initializers")
-	flags.TextVar(&o.ScopeLevel, "scope", o.ScopeLevel, "scope analysis `level`, \"full\", \"conservative\" or \"off\"")
-	flags.TextVar(&o.ShadowLevel, "shadow", o.ShadowLevel, "shadow analysis `level`, \"full\" or \"off\"")
-	flags.TextVar(&o.NestedAssign, "nested-assign", o.NestedAssign, "nested assign `level`, \"full\" or \"off\"")
+	analyzers := analyzeFlags[config.AnalyzerFlags]{
+		{config.ScopeAnalyzer, "scope", "scope analysis"},
+		{config.ShadowAnalyzer, "shadow", "shadow analysis"},
+		{config.NestedAssignAnalyzer, "nested-assign", "nested assign analysis"},
+	}
+
+	config := analyzeFlags[config.Config]{
+		{config.IncludeGenerated, "generated", "check generated files"},
+		{config.Conservative, "conservative", "enable conservative scope analysis"},
+		{config.CombineDeclarations, "combine", "combine declaration when moving to initializers"},
+		{config.RenameVariables, "rename", "rename shadowed variables (experimental)"},
+	}
+
+	analyzers.register(flags, &r.analyzers)
+	config.register(flags, &r.behavior)
+	flags.IntVar(&r.maxLines, "max-lines", r.maxLines, "maximum declaration lines for moving to initializers")
+}
+
+type analyzeFlags[T ~uint8] []struct {
+	flag        T
+	name, usage string
+}
+
+func (a analyzeFlags[T]) register(flags *flag.FlagSet, b *config.BitMask[T]) {
+	for _, f := range a {
+		flags.Var(boolValue[T, *config.BitMask[T]]{b, f.flag}, f.name, f.usage)
+	}
 }

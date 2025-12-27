@@ -8,8 +8,8 @@
 [![Codeberg CI](https://ci.codeberg.org/api/badges/15593/status.svg?branch=main)](https://ci.codeberg.org/repos/15593/branches/main)
 [![License](https://img.shields.io/github/license/fillmore-labs/scopeguard)](https://www.apache.org/licenses/LICENSE-2.0)
 
-A Go static analyzer that finds variables declared with unnecessarily wide scope and suggests moving them into tighter
-scopes, following Go’s idiomatic scoping patterns.
+A Go static analyzer that identifies variables declared with unnecessarily wide scope and suggests moving them into
+tighter scopes, following Go’s idiomatic scoping patterns.
 
 ## Why Narrow Scope Matters
 
@@ -17,8 +17,8 @@ Have you ever scrolled through a long function to find where a variable was last
 declaration 200 lines earlier? Wide variable scopes add cognitive overhead, make refactoring harder, and can introduce
 bugs.
 
-Go was designed with narrow scoping in mind — from the `:=` operator to initialization statements in control structures.
-ScopeGuard helps you follow these patterns by detecting opportunities to tighten variable scope so you can write more
+Go encourages narrow scoping — from the `:=` operator to initialization statements in control structures. ScopeGuard
+helps you follow these best practices by detecting opportunities to tighten variable scope so you can write more
 idiomatic Go.
 
 ### Examples
@@ -46,7 +46,7 @@ func TestProcessor(t *testing.T) {
 }
 ```
 
-This pattern appears in
+This pattern is recommended by the Google
 [Go Style Best Practices](https://google.github.io/styleguide/go/best-practices#local-variables-in-tests).
 
 **Before:**
@@ -76,13 +76,21 @@ func process(data []byte) error {
 
 ## Benefits
 
-- **Simplifies refactoring:** Minimizes dependencies when extracting code blocks.
-- **Reduces cognitive load:** Readers can forget variables once their block ends.
+- **Facilitates refactoring:** Minimizes dependencies when extracting code blocks.
+- **Reduces cognitive load:** Readers can safely ignore variables once their block ends.
 - **Enables shorter names:** Narrow scope allows concise names (as Go style guides recommend).
 - **Clarifies intent:** Makes the relationship between variables and control structures explicit.
 - **Prevents reuse errors:** Avoids accidentally reusing values from previous operations.
-- **Reduces pollution:** Keeps broader scopes free of temporary variables.
+- **Minimizes namespace pollution:** Keeps broader scopes free of temporary variables.
 - **Aligns with idiomatic Go:** Follows patterns encouraged by Effective Go and major style guides.
+
+## When a Wider Scope Is Fine
+
+Not every suggestion improves readability. Legitimate patterns where a slightly wider scope can be clearer include
+[early returns](https://google.github.io/styleguide/go/decisions#indent-error-flow) that
+[reduce nesting](https://github.com/uber-go/guide/blob/2023-05-09/style.md#reduce-nesting).
+
+Use your judgment — the tool highlights opportunities; you decide what makes your code clearer.
 
 ## Installation
 
@@ -110,12 +118,16 @@ eget fillmore-labs/scopeguard
 
 ## What It Detects
 
-Opportunities to move variables into the initializers of `if`, `for`, or `switch` statements, or into narrower block
-scopes and `case` clauses. Both short declarations (`:=`) and explicit variable declarations are supported.
+ScopeGuard detects opportunities to move declarations into:
 
-To ensure correctness, ScopeGuard excludes moves that would cross loop or closure boundaries.
+- Initializers of `if`, `for`, or `switch` statements
+- Narrower block scopes and `case` clauses
 
-ScopeGuard also diagnoses usage-after-shadow and nested assignments.
+Both short declarations (`:=`) and explicit variable declarations are supported.
+
+To ensure correctness, ScopeGuard excludes moves that would cross loop, closure, or labeled statement boundaries.
+
+ScopeGuard also diagnoses usage after shadowing and nested assignments.
 
 ## Usage
 
@@ -140,11 +152,11 @@ scopeguard -fix ./...
 
 > [!TIP]
 >
-> For a safer initial run, use `-scope=conservative` with `-fix`. This only applies changes that don't cross other
+> For a safer initial run, use `-conservative` with `-fix`. This only applies the changes that don't cross other
 > statements:
 >
 > ```shell
-> scopeguard -fix -scope=conservative ./...
+> scopeguard -fix -conservative ./...
 > ```
 
 ## Configuration
@@ -153,21 +165,19 @@ scopeguard -fix ./...
 
 #### Analysis Scope
 
-Control which variables are candidates for moving with the `-scope` flag:
+Control scope analysis with the `-scope` flag:
 
-- `full` (default): Analyzes all eligible variable declarations.
-- `conservative`: Only suggests moves that don't cross other statements, ensuring no changes to evaluation order or side
-  effects.
-- `off`: Disables scope analysis.
+- `true` (default): Analyzes all eligible variable declarations.
+- `false`: Disables scope analysis.
 
 ```shell
-scopeguard -scope conservative ./...
+scopeguard -scope=false ./...
 ```
 
 #### Shadowing Detection
 
 Variable shadowing occurs when a variable declared in an inner scope has the same name as a variable in an outer scope.
-This can lead to subtle bugs where you accidentally use the wrong variable. The standard `shadow` tool might
+This can lead to subtle bugs where you accidentally use the wrong variable. The standard `shadow` tool is expected to
 [be deprecated](https://go.dev/issue/75342). Since shadowing is closely related to scope reduction, ScopeGuard includes
 shadow detection.
 
@@ -188,16 +198,107 @@ func example() error {
 
 Control this behavior with the `-shadow` flag:
 
-- `full` (default): Flag variables that are used after being shadowed in an inner scope.
-- `off`: Disables shadowing diagnostics.
+- `true` (default): Flag variables that are used after being shadowed in an inner scope.
+- `false`: Disables shadowing diagnostics.
 
 ```shell
-scopeguard -shadow off ./...
+scopeguard -shadow=false ./...
 ```
 
 Note that this feature checks for existing shadowing issues and is independent of scope analysis. ScopeGuard's core
 analysis will never suggest moving a variable into an inner scope if it is used after that block, preventing this class
 of bugs by design.
+
+#### Renaming Shadowed Variables (Experimental)
+
+When a variable is used after being shadowed, it can indicate a bug. You can automatically rename shadowed variables to
+resolve this:
+
+```shell
+scopeguard -fix -rename ./...
+```
+
+```go
+func transform(x int) int {
+	switch x {
+	case 1:
+		x := x + 1
+		return x
+
+	case 2:
+		x := x + 2
+		if x > 2 {
+			x := x + 3
+			process(x)
+		}
+
+		return x
+
+	default:
+		x := x + 4
+		process(x)
+	}
+
+	return x
+}
+```
+
+The `-rename` flag appends a suffix (e.g., `_1`, `_2`) to the outer variable to make it unique:
+
+```go
+func transform(x_2 int) int {
+	switch x_2 {
+	case 1:
+		x := x_2 + 1
+		return x
+
+	case 2:
+		x_1 := x_2 + 2
+		if x_1 > 2 {
+			x := x_1 + 3
+			process(x)
+		}
+
+		return x_1
+
+	default:
+		x := x_2 + 4
+		process(x)
+	}
+
+	return x_2
+}
+```
+
+These generic suffixes (`_1`, `_2`) serve as placeholders that don't convey meaning. During code review, replace them
+with descriptive names that reflect each variable's purpose and scope.
+
+> [!NOTE]
+>
+> In functions where variables are renamed, no other fixes are applied. Run `scopeguard -fix` again to apply them.
+
+> [!TIP]
+>
+> For a completely safe renaming operation that performs no scope-related transformations:
+>
+> ```shell
+> scopeguard -scope=false -rename -fix ./...
+> ```
+>
+> This renames shadowed variables only, without moving any declarations.
+
+##### Why is this experimental?
+
+This feature is safe and won't break your code — it only renames variables that are shadowed, meaning they _already_
+have different scopes and the renaming doesn't change program semantics.
+
+The “experimental” label refers to open design questions, not safety concerns:
+
+1. It's unclear whether using generic suffixes like `_1`, `_2` is helpful in practice. Feedback from real-world projects
+   will help determine whether this approach is valuable.
+2. It's unclear whether the outer or inner variable should be renamed. While the outer variable has a wider scope and
+   should arguably have a longer name, the inner variable is sometimes only temporary and could benefit from a
+   non-standard name.
 
 #### Nested Assignments
 
@@ -242,11 +343,44 @@ func example() (string, error) {
 
 Control this behavior with the `-nested-assign` flag:
 
-- `full` (default): Flag nested assignments where a variable is modified within its own assignment expression.
-- `off`: Disables diagnostics.
+- `true` (default): Flag nested assignments where a variable is modified within its own assignment expression.
+- `false`: Disables diagnostics.
 
 ```shell
-scopeguard -nested-assign off ./...
+scopeguard -nested-assign=false ./...
+```
+
+#### Declaration Combining
+
+When multiple variable declarations can be moved to the same control flow initializer (like an `if` statement),
+ScopeGuard can combine them into a single parallel assignment. This reduces nesting and groups related setup logic.
+
+**Before:**
+
+```go
+got := f(x)
+want := "result"
+if got != want {
+	t.Errorf("expected %q, got %q", want, got)
+}
+```
+
+**After:**
+
+```go
+if got, want := f(x), "result"; got != want {
+	t.Errorf("expected %q, got %q", want, got)
+}
+```
+
+Control this behavior with the `-combine` flag:
+
+- `true` (default): Combine compatible declarations into parallel assignments.
+- `false`: Let the user choose when multiple declarations target the same initializer. This disables automatic
+  combination, reducing the number of cases where `-fix` can automatically apply changes.
+
+```shell
+scopeguard -fix -combine=false ./...
 ```
 
 #### Analysis Targets
@@ -281,20 +415,14 @@ x, err := someFunction() //nolint:scopeguard
 
 This is useful when you’ve intentionally chosen a wider scope for readability or other reasons.
 
-## When a Wider Scope Is Fine
-
-Not every suggestion improves readability. Legitimate patterns where a slightly wider scope can be clearer include
-[early returns](https://google.github.io/styleguide/go/decisions#indent-error-flow) that
-[reduce nesting](https://github.com/uber-go/guide/blob/2023-05-09/style.md#reduce-nesting).
-
-Use your judgment — the tool highlights opportunities; you decide what makes your code clearer.
-
 ## Limitations
 
-Always review automated changes from `-fix`. You may need to rework your logic for the suggestion to be correct.
+Always review automated changes from `-fix`. In some cases, you may need to restructure your code for the transformation
+to be semantically correct.
 
 The limitations below (side effect dependencies, evaluation order changes, type changes) do not apply when using
-`-scope=conservative`.
+`-conservative`, with the rare exception of [pointer aliasing](#pointer-aliasing) or closure captures when combining
+declarations.
 
 ### Side Effect Dependencies
 
@@ -362,7 +490,7 @@ if got != want {
 In this example, moving the declaration of `got` and `want` into the `if` changes _when_ `s[i]` is evaluated. The fix
 places it after `i` is incremented, altering the result and breaking the logic.
 
-### Type Changes From Untyped Expressions
+### Implicit Type Changes
 
 When moving a variable declaration, the inferred type can change if the original declaration specified an explicit type.
 For example:
@@ -399,6 +527,35 @@ Moving the declaration changes `a`’s type from `int` to `float64`, causing a d
 This should be rare in practice. To avoid it, ensure variables that need a specific type are declared as narrowly as
 possible, or use `//nolint:scopeguard` at the declaration.
 
+### Pointer Aliasing
+
+Moving declarations can change behavior if variables interact via pointer aliasing. Similar issues can occur with
+closure captures.
+
+This prints `2`:
+
+```go
+x := 1
+px, x := &x, 2
+if x == 2 {
+	fmt.Println(*px)
+}
+```
+
+… will be transformed to:
+
+```go
+x := 1
+if px, x := &x, 2; x == 2 {
+	fmt.Println(*px)
+}
+```
+
+Which prints `1`.
+
+Use `//nolint:scopeguard` at the declaration to suppress this transformation, or better yet, avoid such a complex
+aliasing in declarations.
+
 ## Integration
 
 ### `go vet`
@@ -413,7 +570,7 @@ Add a `.custom-gcl.yaml` file to your project root:
 
 ```yaml
 ---
-version: v2.7.2
+version: v2.8.0
 
 name: golangci-lint
 destination: .
@@ -421,7 +578,7 @@ destination: .
 plugins:
   - module: fillmore-labs.com/scopeguard
     import: fillmore-labs.com/scopeguard/gclplugin
-    version: v0.0.3
+    version: v0.0.4
 ```
 
 Then run `golangci-lint custom` from your project root. This produces a custom `golangci-lint` executable that can be
@@ -441,8 +598,11 @@ linters:
           scopeguard identifies variables with unnecessarily wide scope and suggests moving them to tighter scopes.
         original-url: https://fillmore-labs.com/scopeguard
         settings:
-          scope: conservative
-          shadow: full
+          scope: true
+          shadow: true
+          nested-assign: true
+          conservative: false
+          combine: true
           max-lines: 10
 ```
 
@@ -467,11 +627,6 @@ See also the `golangci-lint`
 - [`noinlineerr`](https://github.com/AlwxSin/noinlineerr): Linter that prefers wider variable scope (the opposite
   philosophy).
 - [`ineffassign`](https://github.com/gordonklaus/ineffassign): Detects ineffectual assignments.
-
-## Future Work
-
-Combine multiple short declarations (e.g., `got := f(); want := 42` → `got, want := f(), 42`) to enable moving them into
-initializers.
 
 ## Links
 

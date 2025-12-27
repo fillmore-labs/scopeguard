@@ -18,15 +18,21 @@ package analyzer
 
 import "golang.org/x/tools/go/analysis"
 
+// Public API constants for the scopeguard analyzer.
+const (
+	name = "scopeguard"
+	doc  = `scopeguard detects variables that can be moved to tighter scopes`
+	url  = "https://pkg.go.dev/fillmore-labs.com/scopeguard"
+)
+
 // New creates a new instance of the scopeguard analyzer.
-// It allows for programmatic configuration using [Option]s, which is useful
+// It allows for programmatic configuration using [Option], which is useful
 // for integrating the analyzer into other tools. For command-line use, the
 // pre-configured [Analyzer] variable is typically sufficient.
 func New(opts ...Option) *analysis.Analyzer {
-	o := makeOptions(opts)
-
-	a := o.Analyzer()
-	registerFlags(o, &a.Flags)
+	r := makeRunOptions(opts)
+	a := r.analyzer()
+	registerFlags(&a.Flags, r)
 
 	return a
 }
