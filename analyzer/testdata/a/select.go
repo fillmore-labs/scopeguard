@@ -14,61 +14,45 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-package rename
+package a
 
-var x_1 = 0
+func select1() {
+	ch := make(chan int)
 
-func rename() {
-	x := 1
-	{
-		x := 2
-		_ = x
+	select {
+	case <-ch:
+	default:
 	}
-	_ = x // want "Identifier 'x' used after previously shadowed"
 }
 
-func renameAgain() {
-	x := 1
-	{
-		x := 2
-		_ = x
-	}
-	_ = x // want "Identifier 'x' used after previously shadowed"
-}
+func select2() (a int) {
+	ch := make(chan int)
 
-func renameNolint() {
-	x := 1
-	{
-		x := 2
-		_ = x
-	}
-	_ = x //nolint:scopeguard
-}
-
-func renameSecond() {
-	x := 1
-	{
-		x := 2
-		_ = x
-	}
-	_ = x //nolint:scopeguard
-
-	{
-		x := 2
-		_ = x
-	}
-	_ = x // want "Identifier 'x' used after previously shadowed"
-}
-
-func shadowedReturn() {
-	_ = func() (i int) {
-		i, a := -1, true
-
-		if a {
-			i := -i
-			return i
+	select {
+	case a := <-ch:
+		if a > 0 {
+			a := 5
+			_ = a
 		}
 
-		return // want "Identifier 'i' used after previously shadowed"
+	default:
 	}
+
+	return // want "Identifier 'a' used after previously shadowed"
+}
+
+func select3() (a int) {
+	ch := make(chan int)
+
+	select {
+	case a = <-ch:
+		if a > 0 {
+		}
+		a := 5
+		_ = a
+
+	default:
+	}
+
+	return // want "Identifier 'a' used after previously shadowed"
 }

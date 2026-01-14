@@ -140,8 +140,8 @@ func removeUnused(stmt ast.Node, unused []string) []analysis.TextEdit {
 }
 
 // removeUnusedAssign handles removal of unused variables from assignment statements (:= and =).
-func removeUnusedAssign(n *ast.AssignStmt, unused []string) []analysis.TextEdit {
-	if n.Tok != token.DEFINE && n.Tok != token.ASSIGN {
+func removeUnusedAssign(stmt *ast.AssignStmt, unused []string) []analysis.TextEdit {
+	if stmt.Tok != token.DEFINE && stmt.Tok != token.ASSIGN {
 		return nil
 	}
 
@@ -150,12 +150,7 @@ func removeUnusedAssign(n *ast.AssignStmt, unused []string) []analysis.TextEdit 
 	underscore := []byte("_")
 	all := true
 
-	for _, expr := range n.Lhs {
-		id, ok := expr.(*ast.Ident)
-		if !ok || id.Name == "_" {
-			continue // blank identifier
-		}
-
+	for id := range astutil.AllAssigned(stmt) {
 		if !slices.Contains(unused, id.Name) {
 			all = false
 			continue
@@ -164,9 +159,9 @@ func removeUnusedAssign(n *ast.AssignStmt, unused []string) []analysis.TextEdit 
 		edits = append(edits, analysis.TextEdit{Pos: id.Pos(), End: id.End(), NewText: underscore})
 	}
 
-	if all && n.Tok == token.DEFINE {
+	if all && stmt.Tok == token.DEFINE {
 		// Change `:=` to `=` when all identifiers are removed
-		edits = append(edits, analysis.TextEdit{Pos: n.TokPos, End: n.TokPos + 1})
+		edits = append(edits, analysis.TextEdit{Pos: stmt.TokPos, End: stmt.TokPos + 1})
 	}
 
 	return edits
@@ -346,13 +341,7 @@ func fprintAssign(buf *bytes.Buffer, in *inspector.Inspector, fset *token.FileSe
 	// Start with the initial statement's LHS and RHS
 	var lhs []ast.Expr
 
-	for _, expr := range stmt.Lhs {
-		if id, ok := expr.(*ast.Ident); ok && slices.Contains(move.Unused, id.Name) {
-			expr = &ast.Ident{NamePos: id.NamePos, Name: "_"}
-		}
-
-		lhs = append(lhs, expr)
-	}
+	lhs = appendFilteredLHS(lhs, stmt, move.Unused)
 
 	rhs := slices.Clone(stmt.Rhs)
 
@@ -376,13 +365,7 @@ func fprintAssign(buf *bytes.Buffer, in *inspector.Inspector, fset *token.FileSe
 		}
 
 		// Append LHS and RHS
-		for _, expr := range otherAssign.Lhs {
-			if id, ok := expr.(*ast.Ident); ok && slices.Contains(otherDecl.Unused, id.Name) {
-				expr = &ast.Ident{NamePos: id.NamePos, Name: "_"}
-			}
-
-			lhs = append(lhs, expr)
-		}
+		lhs = appendFilteredLHS(lhs, otherAssign, otherDecl.Unused)
 
 		rhs = append(rhs, otherAssign.Rhs...)
 	}
@@ -401,6 +384,22 @@ func fprintAssign(buf *bytes.Buffer, in *inspector.Inspector, fset *token.FileSe
 	}
 
 	return extraRemovals, nil
+}
+
+// appendFilteredLHS appends filtered left-hand side expressions from an assignment statement into the provided slice.
+// It replaces identifiers from the LHS that match any in the unused slice with an underscore ('_').
+func appendFilteredLHS(lhs []ast.Expr, stmt *ast.AssignStmt, unused []string) []ast.Expr {
+	lhs = slices.Grow(lhs, len(stmt.Lhs))
+
+	for _, expr := range stmt.Lhs {
+		if id, ok := expr.(*ast.Ident); ok && slices.Contains(unused, id.Name) {
+			expr = &ast.Ident{NamePos: id.NamePos, Name: "_"}
+		}
+
+		lhs = append(lhs, expr)
+	}
+
+	return lhs
 }
 
 // fprintAssignLHS prints the left-hand side of an assignment, replacing unused variables with '_'.

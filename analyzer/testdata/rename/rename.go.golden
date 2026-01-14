@@ -60,13 +60,15 @@ func renameSecond() {
 	_ = x_2 // want "Identifier 'x' used after previously shadowed"
 }
 
-func shadowedReturn() (i_1 int) {
-	i_1, a := -1, true
+func shadowedReturn() {
+	_ = func() (i_1 int) {
+		i_1, a := -1, true
 
-	if a {
-		i := -i_1
-		return i
+		if a {
+			i := -i_1
+			return i
+		}
+
+		return // want "Identifier 'i' used after previously shadowed"
 	}
-
-	return // want "Identifier 'i' used after previously shadowed"
 }

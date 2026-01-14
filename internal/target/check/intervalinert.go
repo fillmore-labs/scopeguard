@@ -47,9 +47,9 @@ func IntervalInert(info *types.Info, parent inspector.Cursor, absorbedDecls []as
 	for s := range parent.Preorder(
 		// keep-sorted start
 		(*ast.AssignStmt)(nil),
+		(*ast.BadStmt)(nil),
 		(*ast.BranchStmt)(nil),
 		(*ast.CaseClause)(nil),
-		(*ast.CommClause)(nil),
 		(*ast.DeferStmt)(nil),
 		(*ast.ExprStmt)(nil),
 		(*ast.ForStmt)(nil),
@@ -60,16 +60,17 @@ func IntervalInert(info *types.Info, parent inspector.Cursor, absorbedDecls []as
 		(*ast.LabeledStmt)(nil),
 		(*ast.RangeStmt)(nil),
 		(*ast.ReturnStmt)(nil),
-		(*ast.SelectStmt)(nil),
 		(*ast.SendStmt)(nil),
-		(*ast.SwitchStmt)(nil),
-		(*ast.TypeSwitchStmt)(nil),
 		// keep-sorted end
 
-		// Note regarding missing ast.Stmt types:
-		// - *ast.BlockStmt is covered by its sub-statements
-		// - *ast.DeclStmt is covered by *ast.GenDecl
-		// - *ast.EmptyStmt has no side effects
+		// Note regarding missing [ast.Stmt] types:
+		// - *[ast.BlockStmt] is covered by its [ast.BlockStmt.List] sub-statements
+		// - *[ast.CommClause] is covered by [ast.CommClause.Comm] and [ast.CommClause.Body]
+		// - *[ast.DeclStmt] is covered by *[ast.GenDecl] in [ast.DeclStmt.Decl]
+		// - *[ast.EmptyStmt] has no side effects
+		// - *[ast.SelectStmt] is covered by [ast.SelectStmt.Body]
+		// - *[ast.SwitchStmt] is covered by [ast.SwitchStmt.Init] and [ast.SwitchStmt.Body]
+		// - *[ast.TypeSwitchStmt] is covered by [ast.TypeSwitchStmt.Init] and [ast.TypeSwitchStmt.Body]
 	) {
 		n := s.Node()
 
@@ -115,20 +116,11 @@ func inertShortDecl(info *types.Info, stmt *ast.AssignStmt) bool {
 		return false
 	}
 
-	for _, id := range stmt.Lhs {
-		id, ok := id.(*ast.Ident)
-		if !ok {
-			return false
-		}
-
-		if id.Name == "_" {
-			continue
-		}
-
+	for id := range astutil.AllAssigned(stmt) {
 		// Ensure the identifier defines a new object.
-		// If Defs[id] is nil, it means it's a reassignment of an existing variable,
+		// If its not in Defs[id], it means it's a reassignment of an existing variable,
 		// which is a side effect we must avoid.
-		if obj, ok := info.Defs[id]; !ok || obj == nil {
+		if _, ok := info.Defs[id]; !ok {
 			return false
 		}
 	}

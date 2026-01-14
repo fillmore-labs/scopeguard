@@ -58,6 +58,12 @@ func TestAnalyzer(t *testing.T) {
 			fix:     true,
 		},
 		{
+			name:    "Shadow",
+			dir:     "./shadow",
+			options: Options{WithScope(false), WithNestedAssign(false), WithRename(false)},
+			fix:     true,
+		},
+		{
 			name:    "Rename",
 			dir:     "./rename",
 			options: Options{WithScope(false), WithNestedAssign(false), WithRename(true)},

@@ -32,7 +32,6 @@ import (
 	"fillmore-labs.com/scopeguard/internal/config"
 	"fillmore-labs.com/scopeguard/internal/scope"
 	"fillmore-labs.com/scopeguard/internal/target"
-	"fillmore-labs.com/scopeguard/internal/usage"
 )
 
 // ProcessDiagnostics generates and emits diagnostics for variables that can be moved to tighter scopes.
@@ -42,22 +41,22 @@ import (
 // and where, generates a suggested fix with text edits to perform the move (if possible) and
 // reports the diagnostic to the analysis framework.
 func ProcessDiagnostics(ctx context.Context, p *analysis.Pass, currentFile astutil.CurrentFile, fdecl inspector.Cursor, diagnostics Diagnostics, option config.BitMask[config.Config]) {
-	defer trace.StartRegion(ctx, "Report").End()
-
 	in := fdecl.Inspector()
+
+	conservative := option.Enabled(config.Conservative)
 
 	// Report nested assignments
 	reportNestedAssigned(ctx, p, in, currentFile, diagnostics.Nested)
 
 	// Report variables used after shadowed
 	rename := option.Enabled(config.RenameVariables) && !currentFile.Generated()
-	hadFixes := reportUsedAfterShadow(ctx, p, currentFile, fdecl, diagnostics.Shadows, rename)
+	hadFixes := reportUsedAfterShadow(ctx, p, currentFile, fdecl, diagnostics.Shadows, rename, conservative)
 
 	if len(diagnostics.Moves) == 0 {
 		return
 	}
 
-	conservative := option.Enabled(config.Conservative)
+	defer trace.StartRegion(ctx, "Report").End()
 
 	for _, move := range diagnostics.Moves {
 		movable := move.Status.Movable()
@@ -85,68 +84,6 @@ func ProcessDiagnostics(ctx context.Context, p *analysis.Pass, currentFile astut
 
 		p.Report(diagnostic)
 	}
-}
-
-// reportNestedAssigned emits diagnostics for nested assigns of variables.
-func reportNestedAssigned(ctx context.Context, p *analysis.Pass, in *inspector.Inspector, currentFile astutil.CurrentFile, nested []usage.NestedAssign) {
-	defer trace.StartRegion(ctx, "ReportNestedAssigned").End()
-
-	for _, assignment := range nested {
-		if currentFile.NoLintComment(assignment.Ident.Pos()) {
-			continue
-		}
-
-		stmt := assignment.Asgn.Node(in)
-
-		p.Report(analysis.Diagnostic{
-			Pos:     assignment.Ident.Pos(),
-			End:     assignment.Ident.End(),
-			Message: fmt.Sprintf("Nested reassignment of variable '%s' (sg:nst)", assignment.Ident.Name),
-			Related: []analysis.RelatedInformation{{
-				Pos:     stmt.Pos(),
-				End:     stmt.End(),
-				Message: "Inside this assign statement",
-			}},
-		})
-	}
-}
-
-// reportUsedAfterShadow emits diagnostics for variables used after previously shadowed.
-func reportUsedAfterShadow(ctx context.Context, p *analysis.Pass, currentFile astutil.CurrentFile, fdecl inspector.Cursor, shadows []usage.ShadowUse, rename bool) bool {
-	defer trace.StartRegion(ctx, "ReportShadowed").End()
-
-	var renamer *Renamer
-	if rename {
-		renamer = NewRenamer()
-	}
-
-	hadFixes := false
-
-	in := fdecl.Inspector()
-
-	for _, shadowed := range shadows {
-		use := shadowed.Use.Node(in)
-		if currentFile.NoLintComment(use.Pos()) {
-			continue
-		}
-
-		suggestedFixes := renamer.Renames(p.TypesInfo, fdecl, shadowed.Var)
-
-		if len(suggestedFixes) > 0 {
-			hadFixes = true
-		}
-
-		name, decl := shadowed.Var.Name(), shadowed.Decl.Node(in)
-		p.Report(analysis.Diagnostic{
-			Pos:            use.Pos(),
-			End:            use.End(),
-			Message:        fmt.Sprintf("Identifier '%s' used after previously shadowed (sg:uas)", name),
-			Related:        []analysis.RelatedInformation{{Pos: decl.Pos(), End: decl.Pos(), Message: "After this declaration"}},
-			SuggestedFixes: suggestedFixes,
-		})
-	}
-
-	return hadFixes
 }
 
 // createMessage constructs the diagnostic message and related information.
@@ -192,16 +129,16 @@ func collectNames(stmt ast.Node) []string {
 		}
 
 		varNames := make([]string, 0, len(n.Lhs))
-		for name := range astutil.AllAssignedNames(n) {
-			varNames = append(varNames, name)
+		for id := range astutil.AllAssigned(n) {
+			varNames = append(varNames, id.Name)
 		}
 
 		return varNames
 
 	case *ast.DeclStmt:
 		var varNames []string
-		for name := range astutil.AllDeclaredNames(n) {
-			varNames = append(varNames, name)
+		for id := range astutil.AllDeclared(n) {
+			varNames = append(varNames, id.Name)
 		}
 
 		return varNames

@@ -155,28 +155,28 @@ func TestIntervalInert(t *testing.T) {
 			src:      `var y = new("&[]int{}"); _ = y`,
 			interval: func(b *ast.BlockStmt) (start, end token.Pos) { return b.Lbrace, b.List[0].End() },
 			want:     true,
-			version:  "go1.26rc1",
+			version:  "go1.26rc2",
 		},
 		{
 			name:     "new_with_complex_expression",
 			src:      `var y = new(&[]int{}); _ = y`,
 			interval: func(b *ast.BlockStmt) (start, end token.Pos) { return b.Lbrace, b.List[0].End() },
 			want:     false,
-			version:  "go1.26rc1",
+			version:  "go1.26rc2",
 		},
 		{
 			name:     "new_assign_with_expression",
 			src:      `y := new("&[]int{}"); _ = y`,
 			interval: func(b *ast.BlockStmt) (start, end token.Pos) { return b.Lbrace, b.List[0].End() },
 			want:     true,
-			version:  "go1.26rc1",
+			version:  "go1.26rc2",
 		},
 		{
 			name:     "new_assign_with_complex_expression",
 			src:      `y := new(&[]int{}); _ = y`,
 			interval: func(b *ast.BlockStmt) (start, end token.Pos) { return b.Lbrace, b.List[0].End() },
 			want:     false,
-			version:  "go1.26rc1",
+			version:  "go1.26rc2",
 		},
 	}
 

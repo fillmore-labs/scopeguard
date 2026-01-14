@@ -76,7 +76,7 @@ func (c *collector) trackVars(vars []assignedVar, assignmentDone token.Pos, asgn
 
 		done[vid.Var] = struct{}{}
 
-		c.UpdateShadows(vid.Var, vid.Ident, assignmentDone)
+		c.UpdateShadows(vid.Var, vid.NamePos, assignmentDone)
 
 		c.TrackAssignment(vid.Var, vid.Ident, assignmentDone, asgn)
 	}

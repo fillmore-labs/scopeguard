@@ -36,7 +36,7 @@ func (c *collector) handleIdent(id *ast.Ident, idx astutil.NodeIndex) {
 		return // ignore usage on LHS of AssignStmt
 	}
 
-	c.RecordShadowedUse(v, id.NamePos, idx)
+	c.CheckUseAfterShadowed(v, id.NamePos, idx)
 
 	usage := c.attributeDeclaration(v, decl.start < id.NamePos)
 	if usage == nil {
@@ -65,7 +65,7 @@ func (c *collector) handleNamedResults(idx astutil.NodeIndex, results *ast.Field
 				continue
 			}
 
-			c.RecordShadowedUse(v, pos, idx)
+			c.CheckUseAfterShadowed(v, pos, idx)
 
 			usages := c.usages[v]
 			if len(usages) == 0 {
@@ -76,7 +76,7 @@ func (c *collector) handleNamedResults(idx astutil.NodeIndex, results *ast.Field
 
 			usage.Usage |= UsageUsed
 
-			c.notMovable(usage.Decl, v)
+			c.markNonMovable(v, usage.Decl)
 		}
 	}
 }

@@ -32,20 +32,14 @@ func (c *collector) handleShortDecl(stmt *ast.AssignStmt, decl astutil.NodeIndex
 	var vars []assignedVar
 
 	// For each identifier on the LHS
-	for idx, id := range stmt.Lhs {
-		id, ok := id.(*ast.Ident)
+	for idx, expr := range stmt.Lhs {
+		id, ok := expr.(*ast.Ident)
 		if !ok || id.Name == "_" {
 			continue
 		}
 
-		if def, ok := c.TypesInfo.Defs[id]; ok {
-			if def == nil {
-				continue // Symbolic variable in type switch (e.g., switch x := y.(type))
-			}
-
-			// Record a new variable definition
-			c.recordDeclaration(decl, assignmentDone, id, def)
-
+		if _, ok := c.recordDeclaration(id, decl, assignmentDone); ok {
+			// Recorded a new variable definition
 			continue
 		}
 
@@ -59,7 +53,7 @@ func (c *collector) handleShortDecl(stmt *ast.AssignStmt, decl astutil.NodeIndex
 
 			// Record reassignment of an existing variable
 			flags := usageFlagsFromAssignedType(v, assignedType(c.TypesInfo, stmt, idx))
-			c.recordReassignment(decl, assignmentDone, id, v, flags)
+			c.recordReassignment(decl, id.NamePos, assignmentDone, v, flags)
 
 			continue
 		}
@@ -71,20 +65,20 @@ func (c *collector) handleShortDecl(stmt *ast.AssignStmt, decl astutil.NodeIndex
 }
 
 // recordReassignment records a reassignment of an existing variable.
-func (c *collector) recordReassignment(decl astutil.NodeIndex, assignmentDone token.Pos, id *ast.Ident, v *types.Var, flags Flags) {
+func (c *collector) recordReassignment(decl astutil.NodeIndex, namePos, assignmentDone token.Pos, v *types.Var, flags Flags) {
 	usage := NodeUsage{Decl: decl, Usage: flags}
 
 	if usages := c.usages[v]; len(usages) > 0 {
 		c.usages[v] = append(usages, usage)
 	} else {
-		// If the variable was declared and is not tracked (e.g., function parameters),
-		// create a placeholder entry to indicate external declaration.
+		// If the variable was declared and is not tracked
+		// (e.g., type switch clause implicit variables), create a placeholder entry.
 		c.usages[v] = []NodeUsage{{Decl: astutil.InvalidNode, Usage: UsageUsed}, usage}
 	}
 
-	c.current[v] = declUsage{start: assignmentDone, ignore: id.NamePos}
+	c.current[v] = declUsage{start: assignmentDone, ignore: namePos}
 
-	c.RecordAssignment(v, id, assignmentDone)
+	c.UpdateShadows(v, namePos, assignmentDone)
 }
 
 func usageFlagsFromAssignedType(v *types.Var, assignedType types.Type) Flags {
@@ -122,7 +116,7 @@ func assignedType(info *types.Info, stmt *ast.AssignStmt, idx int) types.Type {
 			case token.IMAG:
 				return types.Typ[types.Complex128]
 			case token.CHAR:
-				return universeRune.Type()
+				return universeRune
 			case token.STRING:
 				return types.Typ[types.String]
 			}
@@ -145,4 +139,4 @@ func assignedType(info *types.Info, stmt *ast.AssignStmt, idx int) types.Type {
 }
 
 // universeRune is the object for the predeclared "rune" type.
-var universeRune = types.Universe.Lookup("rune")
+var universeRune = types.Universe.Lookup("rune").Type()

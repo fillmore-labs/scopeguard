@@ -22,6 +22,8 @@ import (
 	"go/types"
 	"slices"
 
+	"golang.org/x/tools/go/ast/inspector"
+
 	"fillmore-labs.com/scopeguard/internal/astutil"
 	"fillmore-labs.com/scopeguard/internal/scope"
 )
@@ -33,6 +35,9 @@ type ShadowChecker struct {
 	// shadowed maps shadowed variables.
 	shadowed map[*types.Var]shadowInfo
 
+	// selects maps communication clauses to its enclosing select.
+	selects scope.SelectIndex
+
 	// usedAfterShadow collects usage of variables used after previously shadowed.
 	usedAfterShadow []ShadowUse
 }
@@ -40,11 +45,12 @@ type ShadowChecker struct {
 // NewShadowChecker creates a new ShadowChecker instance.
 //
 // If enabled is false, shadow tracking is disabled and the checker is a no-op that uses minimal memory.
-func NewShadowChecker(enabled bool) ShadowChecker {
+func NewShadowChecker(body inspector.Cursor, enabled bool) ShadowChecker {
 	var sc ShadowChecker
 
 	if enabled {
 		sc.shadowed = make(map[*types.Var]shadowInfo)
+		sc.selects = scope.NewSelectIndex(body)
 	}
 
 	return sc
@@ -67,64 +73,33 @@ type shadowInfo struct {
 	// This prevents the reassignment from being flagged as a "use while shadowed".
 	ignore token.Pos
 
-	// decl is the inspector index of the inner declaration that shadows the outer variable.
-	decl astutil.NodeIndex
+	// id is the inner identifier declaration that shadows the outer variable.
+	id *ast.Ident
 }
 
-// shadowing reports whether the given position falls within the active shadowing window.
-// A position is shadowed if it's after the start and before the end (if set).
+// shadowing reports whether the given position falls within the shadowing window.
 func (s shadowInfo) shadowing(pos token.Pos) bool {
 	return pos >= s.start && (!s.end.IsValid() || pos < s.end) && s.ignore != pos
 }
 
-// RecordShadowingDeclaration checks if the variable v shadows another in parent scopes and records it.
-func (sc *ShadowChecker) RecordShadowingDeclaration(scopes scope.UsageScope, v *types.Var, id *ast.Ident, decl astutil.NodeIndex) {
+// CheckDeclarationShadowing checks if the variable shadows another in parent scopes and records it.
+func (sc *ShadowChecker) CheckDeclarationShadowing(scopes scope.UsageScope, variable *types.Var, id *ast.Ident) {
 	if sc.shadowed == nil {
 		return
 	}
 
-	if s, start := scopes.Shadowing(v, id.NamePos); s != nil {
-		sc.shadowed[s] = shadowInfo{start: start, end: token.NoPos, decl: decl}
+	if shadowed, boundary := scopes.Shadowing(sc.selects, variable); shadowed != nil {
+		sc.shadowed[shadowed] = shadowInfo{start: boundary, end: token.NoPos, id: id}
 	}
 }
 
-// RecordShadowedUse checks if the variable v is shadowed at the given position.
+// CheckUseAfterShadowed checks if the variable is used at the given position after shadowed.
 // If it is, it records the usage.
-func (sc *ShadowChecker) RecordShadowedUse(v *types.Var, pos token.Pos, idx astutil.NodeIndex) {
-	if s, ok := sc.shadowed[v]; ok && s.shadowing(pos) {
-		sc.recordUsedAfterShadow(v, idx, s.decl)
-	}
-}
+func (sc *ShadowChecker) CheckUseAfterShadowed(variable *types.Var, namePos token.Pos, use astutil.NodeIndex) {
+	if s, ok := sc.shadowed[variable]; ok && s.shadowing(namePos) {
+		sc.usedAfterShadow = append(sc.usedAfterShadow, ShadowUse{Var: variable, Ident: s.id, Use: use})
 
-// recordUsedAfterShadow tracks the usage of a variable after it has been previously shadowed.
-func (sc *ShadowChecker) recordUsedAfterShadow(v *types.Var, use, decl astutil.NodeIndex) {
-	sc.usedAfterShadow = append(sc.usedAfterShadow, ShadowUse{Var: v, Use: use, Decl: decl})
-
-	delete(sc.shadowed, v) // record only the first usage
-}
-
-// RecordAssignment updates the shadowing information for a variable when it is reassigned.
-// It marks the end of the shadowing range or removes the variable from the shadowed map.
-//
-// Called when an outer variable that was previously shadowed is reassigned.
-// This "clears" the shadow, assuming the assignment indicates intentional use of the outer variable.
-//
-// Note: This heuristic is lexically based, not control-flow sensitive.
-// An assignment inside an if/switch block clears the shadow for subsequent lines.
-func (sc *ShadowChecker) RecordAssignment(v *types.Var, id *ast.Ident, assignmentDone token.Pos) {
-	s, ok := sc.shadowed[v]
-	if !ok {
-		return
-	}
-
-	if !s.end.IsValid() {
-		// First reassignment: set the shadow end position
-		s.ignore = id.NamePos
-		s.end = assignmentDone
-		sc.shadowed[v] = s
-	} else {
-		// Already has an end position: shadow is fully resolved, remove from tracking
-		delete(sc.shadowed, v)
+		delete(sc.shadowed, variable) // record only the first usage
 	}
 }
 
@@ -132,34 +107,27 @@ func (sc *ShadowChecker) RecordAssignment(v *types.Var, id *ast.Ident, assignmen
 // When a shadowed outer variable is reassigned, the shadow "ends" at that point,
 // as the outer variable has a new value.
 //
-// Note: This is lexically based, not control-flow sensitive. An assignment inside
-// an `if` block or switch `case` clears the shadow for subsequent lines.
-func (sc *ShadowChecker) UpdateShadows(v *types.Var, id *ast.Ident, assignmentDone token.Pos) {
+// Note: This is lexically based, not control-flow sensitive.
+func (sc *ShadowChecker) UpdateShadows(v *types.Var, namePos, assignmentDone token.Pos) {
 	// Was the assigned variable shadowed?
-	s, ok := sc.shadowed[v]
-	if !ok {
-		return
-	}
+	switch s, ok := sc.shadowed[v]; {
+	case !ok:
+		// Not shadowed.
 
-	// Update the shadow end position based on the current state:
-	switch hasEnd := s.end.IsValid(); {
-	case !hasEnd:
-		// No end is set: This is the first reassignment, mark shadow as ending after this assignment
-		s.ignore = id.NamePos
-		s.end = assignmentDone
-		sc.shadowed[v] = s
+	case namePos < s.start:
+		// Assignment before we start complaining (e.g. in an else branch).
 
-	case id.NamePos >= s.end:
-		// We've passed the end: Shadow is done, remove from tracking
+	case s.end.IsValid() && namePos >= s.end:
+		// Assignment after shadow already ended.
 		delete(sc.shadowed, v)
 
-	default:
-		// We're before the end: We're in a nested scope (e.g., function literal)
-		if assignmentDone < s.end {
-			// Update to the earlier assignment position
-			s.ignore = id.NamePos
-			s.end = assignmentDone
-			sc.shadowed[v] = s
-		}
+	case !s.end.IsValid() || assignmentDone < s.end:
+		// First reassignment or nested reassignment.
+		// We record the end of the shadow at this assignment.
+		// If we already have an end position (from an outer scope assignment),
+		// We update if this assignment finishes *earlier* (narrowing the shadow window).
+		s.ignore = namePos
+		s.end = assignmentDone
+		sc.shadowed[v] = s
 	}
 }

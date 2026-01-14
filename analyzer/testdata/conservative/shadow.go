@@ -1,4 +1,4 @@
-// Copyright 2025-2026 Oliver Eikemeier. All Rights Reserved.
+// Copyright 2026 Oliver Eikemeier. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -14,24 +14,21 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-package check
+package conservative
 
 import (
-	"go/ast"
-	"go/types"
-
-	"fillmore-labs.com/scopeguard/internal/astutil"
+	"log"
+	"strings"
 )
 
-// ShadowUse contains information about a variable use after previously shadowed.
-type ShadowUse struct {
-	Var   *types.Var
-	Ident *ast.Ident
-	Use   astutil.NodeIndex
-}
+func notReachable() (err error) {
+	var sb strings.Builder
 
-// NestedAssign contains information about a nested variable assign.
-type NestedAssign struct {
-	Ident *ast.Ident
-	Asgn  astutil.NodeIndex
+	if _, err := sb.WriteString(""); err != nil {
+		panic(err)
+	} else {
+		log.Fatal(err)
+	}
+
+	return
 }

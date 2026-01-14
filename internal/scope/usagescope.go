@@ -64,40 +64,100 @@ func (s UsageScope) CommonAncestor(declScope, currentScope, usageScope *types.Sc
 }
 
 // Shadowing looks for a shadowed variable in parent scopes.
-func (s UsageScope) Shadowing(v *types.Var, pos token.Pos) (*types.Var, token.Pos) {
-	scope := v.Parent()
-	start := scope.End()
+//
+// Parameters:
+//   - selects: Index mapping each *[ast.CommClause] to its parent *[ast.SelectStmt]
+//   - variable: The variable that may be shadowing another
+//
+// Returns:
+//   - shadowed variable: The outer variable being shadowed (nil if none found)
+//   - boundary: The position where the shadowing ends
+//
+// For nested if statements, the boundary is set to the outermost statement to flag constructs like:
+//
+//	err := ...()
+//	if err != nil {
+//	    err := ...() // This shadows the outer 'err'
+//	    if err != nil { return err }
+//	    err = ...() // This assigns to the inner 'err'
+//	} else {
+//	    err = ...() // Using the outer 'err' is fine here
+//	}
+//	return err  // Using outer 'err' after inner 'err' went out of scope
+func (s UsageScope) Shadowing(selects SelectIndex, variable *types.Var) (*types.Var, token.Pos) {
+	var (
+		boundary        token.Pos       // Position where the shadowing ends
+		crossedBoundary bool            // Inside switch, expand boundary
+		selectBoundary  *ast.CommClause // Inside select, expand boundary
+	)
 
-	switch s.Index[scope].(type) {
-	case *ast.FuncType:
-		return nil, token.NoPos // Declared at the function top level
-
+	parent := variable.Parent() // The scope the variable declaration lives in
+	switch node := s.Index[parent].(type) {
 	case *ast.CaseClause:
-		start = scope.Parent().End() // Complain after the switch
+		crossedBoundary = true
 
 	case *ast.CommClause:
-		// The parent of an *ast.CommClause scope is the parent of the select statement.
+		selectBoundary = node
+
+	case *ast.FuncType:
+		return nil, token.NoPos // Variable declared at function top level - we don't cross them
+
+	default:
+		boundary = node.End()
 	}
 
-	// Search in parent scopes
-	for parent := scope.Parent(); parent != nil; parent = parent.Parent() {
-		if shadowed := parent.Lookup(v.Name()); shadowed != nil && shadowed.Pos() <= pos {
-			shadowed, ok := shadowed.(*types.Var)
-			if !ok || !types.Identical(shadowed.Type(), v.Type()) {
-				return nil, token.NoPos // Has different type, i.e. x := x.(T)
-			}
+	// Search parent scopes for a variable with the same name and type
+	for parent = parent.Parent(); parent != nil; parent = parent.Parent() {
+		node := s.Index[parent]
 
-			// Found a shadowed variable.
-			return shadowed, start
+		// Update boundary based on scope transitions
+		switch {
+		case crossedBoundary:
+			// [ast.SwitchStmt] and [ast.TypeSwitchStmt] create an implicit scope.
+			// Variables declared in a case clause are in the implicit scope of the case,
+			// which is nested in the switch scope. We extend the boundary to the end of the switch scope.
+			boundary, crossedBoundary = node.End(), false
+
+		case selectBoundary != nil:
+			// [ast.SelectStmt] does not create an implicit scope wrapping the cases.
+			// We need extra bookkeeping at the caller to find the parent.
+			boundary, selectBoundary = selects.Stmt(selectBoundary).End(), nil
 		}
 
-		switch s.Index[parent].(type) {
-		case *ast.FuncType:
-			return nil, token.NoPos // Don't cross function definitions
+		exit := false
+
+		// Adjust boundary for specific statement types
+		switch node := node.(type) {
+		case *ast.IfStmt:
+			// Report shadowing after the outermost [ast.IfStmt] ends, even when reassigned in the else branch.
+			boundary = node.End()
 
 		case *ast.CaseClause:
-			// Complain after the switch. This makes shadowing inside the case possible without notifications.
-			start = parent.Parent().End()
+			// Report shadowing after the switch. This allows usage inside the case without warnings.
+			crossedBoundary = true
+
+		case *ast.CommClause:
+			selectBoundary = node
+
+		case *ast.FuncType:
+			// Don't cross function boundaries
+			exit = true
+		}
+
+		// Look for a variable with the same name in this scope
+		if shadowed := parent.Lookup(variable.Name()); shadowed != nil && shadowed.Pos() <= variable.Pos() {
+			shadowedVar, ok := shadowed.(*types.Var)
+			if !ok || !types.Identical(shadowedVar.Type(), variable.Type()) {
+				// Not a variable, or has different type (e.g., x := x.(T) type assertion)
+				return nil, token.NoPos
+			}
+
+			// Found a shadowed variable with matching name and type
+			return shadowedVar, boundary
+		}
+
+		if exit {
+			break
 		}
 	}
 

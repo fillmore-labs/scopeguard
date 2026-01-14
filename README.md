@@ -1,11 +1,11 @@
 # ScopeGuard
 
 [![Go Reference](https://pkg.go.dev/badge/fillmore-labs.com/scopeguard.svg)](https://pkg.go.dev/fillmore-labs.com/scopeguard)
-[![Test](https://github.com/fillmore-labs/scopeguard/actions/workflows/test.yml/badge.svg?branch=main)](https://github.com/fillmore-labs/scopeguard/actions/workflows/test.yml)
-[![CodeQL](https://github.com/fillmore-labs/scopeguard/actions/workflows/github-code-scanning/codeql/badge.svg?branch=main)](https://github.com/fillmore-labs/scopeguard/actions/workflows/github-code-scanning/codeql)
-[![Coverage](https://codecov.io/gh/fillmore-labs/scopeguard/branch/main/graph/badge.svg?token=D7ZKQQKAIG)](https://codecov.io/gh/fillmore-labs/scopeguard)
+[![Test](https://github.com/fillmore-labs/scopeguard/actions/workflows/test.yml/badge.svg?branch=dev)](https://github.com/fillmore-labs/scopeguard/actions/workflows/test.yml)
+[![CodeQL](https://github.com/fillmore-labs/scopeguard/actions/workflows/github-code-scanning/codeql/badge.svg?branch=dev)](https://github.com/fillmore-labs/scopeguard/actions/workflows/github-code-scanning/codeql)
+[![Coverage](https://codecov.io/gh/fillmore-labs/scopeguard/branch/dev/graph/badge.svg?token=D7ZKQQKAIG)](https://codecov.io/gh/fillmore-labs/scopeguard)
 [![Go Report Card](https://goreportcard.com/badge/fillmore-labs.com/scopeguard)](https://goreportcard.com/report/fillmore-labs.com/scopeguard)
-[![Codeberg CI](https://ci.codeberg.org/api/badges/15593/status.svg?branch=main)](https://ci.codeberg.org/repos/15593/branches/main)
+[![Codeberg CI](https://ci.codeberg.org/api/badges/15593/status.svg?branch=dev)](https://ci.codeberg.org/repos/15593/branches/dev)
 [![License](https://img.shields.io/github/license/fillmore-labs/scopeguard)](https://www.apache.org/licenses/LICENSE-2.0)
 
 A Go static analyzer that identifies variables declared with unnecessarily wide scope and suggests moving them into
@@ -177,9 +177,9 @@ scopeguard -scope=false ./...
 #### Shadowing Detection
 
 Variable shadowing occurs when a variable declared in an inner scope has the same name as a variable in an outer scope.
-This can lead to subtle bugs where you accidentally use the wrong variable. The standard `shadow` tool is expected to
-[be deprecated](https://go.dev/issue/75342). Since shadowing is closely related to scope reduction, ScopeGuard includes
-shadow detection.
+This can lead to subtle bugs where you accidentally use the wrong variable. The standard `shadow` tool is expected
+[to be deprecated](https://go.dev/issue/75342). Since shadowing is closely related to scope, ScopeGuard includes shadow
+detection.
 
 By default, ScopeGuard flags variables that are **used after** being shadowed in an inner scope. While this is legal Go,
 it can be difficult to understand:
@@ -292,7 +292,7 @@ with descriptive names that reflect each variable's purpose and scope.
 This feature is safe and won't break your code — it only renames variables that are shadowed, meaning they _already_
 have different scopes and the renaming doesn't change program semantics.
 
-The “experimental” label refers to open design questions, not safety concerns:
+The “experimental” label refers to open design questions:
 
 1. It's unclear whether using generic suffixes like `_1`, `_2` is helpful in practice. Feedback from real-world projects
    will help determine whether this approach is valuable.
@@ -578,7 +578,7 @@ destination: .
 plugins:
   - module: fillmore-labs.com/scopeguard
     import: fillmore-labs.com/scopeguard/gclplugin
-    version: v0.0.4
+    version: v0.0.5
 ```
 
 Then run `golangci-lint custom` from your project root. This produces a custom `golangci-lint` executable that can be
@@ -602,6 +602,7 @@ linters:
           shadow: true
           nested-assign: true
           conservative: false
+          rename: true
           combine: true
           max-lines: 10
 ```
@@ -627,6 +628,9 @@ See also the `golangci-lint`
 - [`noinlineerr`](https://github.com/AlwxSin/noinlineerr): Linter that prefers wider variable scope (the opposite
   philosophy).
 - [`ineffassign`](https://github.com/gordonklaus/ineffassign): Detects ineffectual assignments.
+- [`shadow`](https://github.com/microsoft/typescript-go/blob/4fcbc64de3069390bf4e87f735b489c0fbc1fec1/_tools/customlint/shadow.go):
+  Custom linter by [Jake Bailey](https://jakebailey.dev/posts/go-shadowing/) for Microsoft TypeScript using
+  [control-flow graph](https://pkg.go.dev/golang.org/x/tools/go/cfg) analysis.
 
 ## Links
 

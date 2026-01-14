@@ -23,12 +23,12 @@ jobs:
         go: ["1.26", "1.25", "1.24"]
         include:
           - go: "1.26"
-            go-version: "1.26.0-rc.1"
+            go-version: "1.26.0-rc.2"
           - go: "1.25"
-            go-version: "1.25.5"
+            go-version: "1.25.6"
             latest: true
           - go: "1.24"
-            go-version: "1.24.11"
+            go-version: "1.24.12"
     env:
       GOTOOLCHAIN: local
     steps:

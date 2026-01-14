@@ -163,15 +163,15 @@ func (ts Stage) analyzeCandidate(in *inspector.Inspector, cf astutil.CurrentFile
 }
 
 // declInfo extracts assigned identifiers and whether the move is restricted to block statements only.
-func declInfo(declNode ast.Node, cf astutil.CurrentFile, maxLines int) (identifiers iter.Seq[string], onlyBlock bool) {
+func declInfo(declNode ast.Node, cf astutil.CurrentFile, maxLines int) (identifiers iter.Seq[*ast.Ident], onlyBlock bool) {
 	switch n := declNode.(type) {
 	case *ast.AssignStmt:
 		// Short declarations can go to init fields if they're small enough
-		return astutil.AllAssignedNames(n), maxLines > 0 && cf.Lines(declNode) > maxLines
+		return astutil.AllAssigned(n), maxLines > 0 && cf.Lines(declNode) > maxLines
 
 	case *ast.DeclStmt:
 		// var declarations can only go to block statements (not init fields)
-		return astutil.AllDeclaredNames(n), true
+		return astutil.AllDeclared(n), true
 
 	default:
 		// Unsupported declaration type

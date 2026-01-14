@@ -14,24 +14,21 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-package check
+package a
 
-import (
-	"go/ast"
-	"go/types"
+import "fmt"
 
-	"fillmore-labs.com/scopeguard/internal/astutil"
-)
+func reassignedFuncNested() {
+	var err error
 
-// ShadowUse contains information about a variable use after previously shadowed.
-type ShadowUse struct {
-	Var   *types.Var
-	Ident *ast.Ident
-	Use   astutil.NodeIndex
-}
+	a, err := func() (int, error) {
+		var a int
+		if a, err = 1, error(nil); a != 0 { // want "Nested reassignment of variable 'err'"
+			return a, err
+		}
 
-// NestedAssign contains information about a nested variable assign.
-type NestedAssign struct {
-	Ident *ast.Ident
-	Asgn  astutil.NodeIndex
+		return 0, nil
+	}()
+
+	fmt.Println(a, err)
 }

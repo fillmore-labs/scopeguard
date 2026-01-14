@@ -14,7 +14,7 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-package a
+package shadow
 
 import "fmt"
 
@@ -95,21 +95,6 @@ func shadowedFuncNested() {
 	fmt.Println(a, err)
 }
 
-func reassignedFuncNested() {
-	var err error
-
-	a, err := func() (int, error) {
-		var a int
-		if a, err = 1, error(nil); a != 0 { // want "Nested reassignment of variable 'err'"
-			return a, err
-		}
-
-		return 0, nil
-	}()
-
-	fmt.Println(a, err)
-}
-
 func cases() {
 	a := 1
 
@@ -148,9 +133,79 @@ func sends() {
 		}
 		fmt.Println(a) // want "Identifier 'a' used after previously shadowed"
 
-	case ch <- a: // want "Identifier 'a' used after previously shadowed"
+	case a := <-ch:
+		_ = a
+
+	case ch <- a:
 		fmt.Println(a)
 	}
 
-	fmt.Println(a)
+	fmt.Println(a) // want "Identifier 'a' used after previously shadowed"
+}
+
+func elseAssign() error {
+	var err error
+	if true {
+		var err error
+
+		_ = err
+	} else {
+		err = nil
+	}
+
+	return err // want "Identifier 'err' used after previously shadowed"
+}
+
+func ifelseuse() {
+	f := func() (int, error) { return 0, nil }
+
+	if x, err := f(); err == nil {
+		fmt.Println(x)
+		if x, err := f(); err == nil {
+			fmt.Println(x)
+		}
+	} else {
+		fmt.Println(err)
+	}
+}
+
+func nestedAssignment() int {
+	i := 1
+	{
+		i := 2
+		_ = i
+	}
+
+	i = func() int {
+		i = 3
+		return i
+	}()
+
+	return i
+}
+
+func reassigned() {
+	i := 1
+
+	{
+		i := 2
+		_ = i
+	}
+
+	i = 3
+	i = i + 1
+
+	{
+		i := 4
+		_ = i
+	}
+
+	i = i + 1 // want "Identifier 'i' used after previously shadowed"
+
+	{
+		i := 5
+		_ = i
+	}
+
+	i++ // want "Identifier 'i' used after previously shadowed"
 }

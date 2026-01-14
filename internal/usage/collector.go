@@ -78,14 +78,51 @@ func (c *collector) result() (Result, Diagnostics) {
 		}
 }
 
-// inspectBody traverses the AST of a function body to collect:
+// handleFunc traverses the AST of a function body to collect:
 //   - Short variable declarations (x :=)
 //   - Var declarations (var x int)
 //   - Variable usages
 //
 // For each declaration, it tracks the tightest scope containing all usages,
 // which determines if the declaration can be moved to a narrower scope.
-func (c *collector) inspectBody(body inspector.Cursor, results *ast.FieldList) {
+func (c *collector) handleFunc(body inspector.Cursor, recv *ast.FieldList, fun *ast.FuncType) {
+	// Processes function parameters and results, recording their declarations.
+	params, results := fun.Params, fun.Results
+
+	start, decl := body.Node().Pos(), astutil.NodeIndexOf(body.Parent())
+	current, usage := declUsage{start: start, ignore: token.NoPos}, []NodeUsage{{Decl: decl, Usage: UsageUsed}}
+
+	for _, list := range [...]*ast.FieldList{recv, params, results} {
+		if list == nil {
+			continue
+		}
+
+		for _, names := range list.List {
+			for _, id := range names.Names {
+				if id.Name == "_" {
+					continue // blank identifier
+				}
+
+				v, ok := c.TypesInfo.Defs[id].(*types.Var)
+				if !ok {
+					continue
+				}
+
+				// Parameter / result declaration
+				c.current[v] = current
+				c.usages[v] = usage
+			}
+		}
+	}
+
+	if c.scopeRanges != nil {
+		funScope := c.TypesInfo.Scopes[fun]
+		c.scopeRanges[decl] = ScopeRange{Decl: funScope, Usage: funScope} // Not movable
+	}
+
+	// Does the function have named result parameters?
+	namedResults := results != nil && len(results.List) > 0 && len(results.List[0].Names) > 0
+
 	nodes := []ast.Node{
 		// keep-sorted start
 		(*ast.AssignStmt)(nil),
@@ -93,33 +130,29 @@ func (c *collector) inspectBody(body inspector.Cursor, results *ast.FieldList) {
 		(*ast.FuncLit)(nil),
 		(*ast.Ident)(nil),
 		(*ast.RangeStmt)(nil),
+		(*ast.ReturnStmt)(nil),
 		// keep-sorted end
 	}
 
-	if hasNamedResults(results) {
-		// We only need to check return statements for named results.
-		nodes = append(nodes, (*ast.ReturnStmt)(nil))
-	}
-
 	body.Inspect(nodes, func(i inspector.Cursor) bool {
-		switch n := i.Node().(type) {
+		switch idx := astutil.NodeIndexOf(i); n := i.Node().(type) {
 		// keep-sorted start newline_separated=yes
 		case *ast.AssignStmt:
 			switch n.Tok {
 			case token.ASSIGN:
-				c.handleAssignedVars(n.Lhs, n.End(), astutil.NodeIndexOf(i))
+				c.handleAssignedVars(n.Lhs, n.End(), idx)
 
 			case token.DEFINE:
 				switch kind, _ := i.ParentEdge(); kind {
 				case edge.CommClause_Comm: // Don't consider short declarations in select cases
-					c.handleReceiveStmt(n, astutil.NodeIndexOf(i))
+					c.handleReceiveStmt(n, idx)
 					return true
 
 				case edge.TypeSwitchStmt_Assign: // Don't consider short declarations in type switches
 					return true
 				}
 
-				c.handleShortDecl(n, astutil.NodeIndexOf(i))
+				c.handleShortDecl(n, idx)
 			}
 
 		case *ast.DeclStmt:
@@ -128,14 +161,13 @@ func (c *collector) inspectBody(body inspector.Cursor, results *ast.FieldList) {
 				break
 			}
 
-			c.handleDeclStmt(gen, astutil.NodeIndexOf(i))
+			c.handleDeclStmt(gen, idx)
 
 		case *ast.FuncLit:
 			fbody, ftype := i.ChildAt(edge.FuncLit_Body, -1), n.Type
-			c.handleFunc(fbody, nil, ftype)
 
 			// Traverse recursively with different return values
-			c.inspectBody(fbody, ftype.Results)
+			c.handleFunc(fbody, nil, ftype)
 
 			return false // Visited recursively in inspectBody, do not descend
 
@@ -144,7 +176,7 @@ func (c *collector) inspectBody(body inspector.Cursor, results *ast.FieldList) {
 				break
 			}
 
-			c.handleIdent(n, astutil.NodeIndexOf(i))
+			c.handleIdent(n, idx)
 
 		case *ast.RangeStmt:
 			if n.Key == nil {
@@ -153,27 +185,22 @@ func (c *collector) inspectBody(body inspector.Cursor, results *ast.FieldList) {
 
 			switch n.Tok {
 			case token.ASSIGN:
-				c.handleAssignedVars([]ast.Expr{n.Key, n.Value}, n.Body.Pos(), astutil.NodeIndexOf(i))
+				c.handleAssignedVars([]ast.Expr{n.Key, n.Value}, n.Body.Pos(), idx)
 
 			case token.DEFINE:
-				c.handleRangeStmt(n, astutil.NodeIndexOf(i))
+				c.handleRangeStmt(n, idx)
 			}
 
 		case *ast.ReturnStmt:
-			if len(n.Results) > 0 {
+			if !namedResults || len(n.Results) > 0 {
 				break
 			}
 
-			c.handleNamedResults(astutil.NodeIndexOf(i), results, n.Pos())
+			c.handleNamedResults(idx, results, n.End())
 
 			// keep-sorted end
 		}
 
 		return true
 	})
-}
-
-// hasNamedResults reports whether the function has named result parameters.
-func hasNamedResults(results *ast.FieldList) bool {
-	return results != nil && len(results.List) > 0 && len(results.List[0].Names) > 0
 }

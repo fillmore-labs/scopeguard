@@ -17,21 +17,93 @@
 package report
 
 import (
+	"context"
+	"fmt"
 	"go/ast"
 	"go/token"
 	"go/types"
+	"runtime/trace"
 	"strconv"
 
 	"golang.org/x/tools/go/analysis"
 	"golang.org/x/tools/go/ast/inspector"
+
+	"golang.org/x/tools/go/analysis/passes/ctrlflow"
+
+	"fillmore-labs.com/scopeguard/internal/astutil"
+	"fillmore-labs.com/scopeguard/internal/report/check"
+	"fillmore-labs.com/scopeguard/internal/usage"
 )
+
+// reportUsedAfterShadow emits diagnostics for variables used after previously shadowed.
+func reportUsedAfterShadow(ctx context.Context, p *analysis.Pass, currentFile astutil.CurrentFile, fdecl inspector.Cursor, shadows []usage.ShadowUse, rename, conservative bool) bool {
+	if len(shadows) == 0 {
+		return false
+	}
+
+	defer trace.StartRegion(ctx, "ReportShadowed").End()
+
+	var cfg check.CFG
+
+	if conservative {
+		cfg = getCFG(p, fdecl)
+	}
+
+	var renamer *Renamer
+	if rename {
+		renamer = NewRenamer()
+	}
+
+	hadFixes := false
+
+	in := fdecl.Inspector()
+
+	for _, shadowed := range shadows {
+		use := shadowed.Use.Node(in)
+		if currentFile.NoLintComment(use.Pos()) {
+			continue
+		}
+
+		if reachable, ok := cfg.Reachable(shadowed.Ident.Pos(), use.Pos()); ok && !reachable {
+			continue
+		}
+
+		suggestedFixes := renamer.Renames(p.TypesInfo, fdecl, shadowed.Var)
+
+		if len(suggestedFixes) > 0 {
+			hadFixes = true
+		}
+
+		p.Report(analysis.Diagnostic{
+			Pos:            use.Pos(),
+			End:            use.End(),
+			Message:        fmt.Sprintf("Identifier '%s' used after previously shadowed (sg:uas)", shadowed.Var.Name()),
+			Related:        []analysis.RelatedInformation{{Pos: shadowed.Ident.Pos(), End: shadowed.Ident.End(), Message: "After this declaration"}},
+			SuggestedFixes: suggestedFixes,
+		})
+	}
+
+	return hadFixes
+}
+
+func getCFG(p *analysis.Pass, fdecl inspector.Cursor) check.CFG {
+	fun, ok := fdecl.Node().(*ast.FuncDecl)
+	if !ok {
+		return check.CFG{}
+	}
+
+	// Do we have the information already?
+	if cfgs, ok := p.ResultOf[ctrlflow.Analyzer].(*ctrlflow.CFGs); ok {
+		return check.CFGFromCFG(cfgs.FuncDecl(fun))
+	}
+
+	// We build only the control-flow graph of the main body, not the contained function literals
+	return check.NewCFG(p.TypesInfo, fun.Body)
+}
 
 // Renamer handles the renaming of shadowed variables by generating unique names.
 //
 // It ensures uniqueness by checking the variable's scope hierarchy for naming conflicts.
-//
-// The Renamer uses lazy initialization for its internal maps, only allocating memory
-// when the first variable is renamed.
 type Renamer struct {
 	// renamed tracks variables that have already been processed to prevent duplicate renaming.
 	renamed map[*types.Var]struct{}
@@ -44,7 +116,10 @@ type Renamer struct {
 // NewRenamer creates a new Renamer instance.
 // The actual initialization of internal maps is deferred until the first call to [Renamer.Renames].
 func NewRenamer() *Renamer {
-	return &Renamer{}
+	return &Renamer{
+		renamed: make(map[*types.Var]struct{}),
+		count:   make(map[string]int),
+	}
 }
 
 // Renames generates [analysis.SuggestedFix]s to rename a shadowed variable.
@@ -88,9 +163,6 @@ func (r *Renamer) Renames(info *types.Info, fdecl inspector.Cursor, v *types.Var
 	}
 
 	// Mark this variable as renamed to prevent duplicate processing
-	if r.renamed == nil {
-		r.renamed = map[*types.Var]struct{}{}
-	}
 	r.renamed[v] = struct{}{}
 
 	return []analysis.SuggestedFix{{Message: "Rename variable " + name, TextEdits: edits}}
@@ -132,9 +204,6 @@ func (r *Renamer) uniqueSuffix(scope *types.Scope, name string) ([]byte, bool) {
 		}
 
 		// Found a unique name: persist the counter and return the suffix
-		if r.count == nil {
-			r.count = make(map[string]int)
-		}
 		r.count[name] = c
 
 		return []byte(suffix), true
