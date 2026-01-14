@@ -31,9 +31,9 @@ import (
 type Index map[*types.Scope]ast.Node
 
 // NewIndex creates a scope analyzer from the type checker's scope map.
-func NewIndex(scopes map[ast.Node]*types.Scope) Index {
-	s := make(Index, len(scopes))
-	for node, scope := range scopes {
+func NewIndex(info *types.Info) Index {
+	s := make(Index, len(info.Scopes))
+	for node, scope := range info.Scopes {
 		s[scope] = node
 	}
 

@@ -17,21 +17,55 @@
 package report
 
 import (
+	"context"
+	"fmt"
 	"go/ast"
 	"go/token"
 	"go/types"
+	"runtime/trace"
 	"strconv"
 
 	"golang.org/x/tools/go/analysis"
 	"golang.org/x/tools/go/ast/inspector"
+
+	"fillmore-labs.com/scopeguard/internal/astutil"
+	"fillmore-labs.com/scopeguard/internal/usage"
 )
+
+// reportUsedAfterShadow emits diagnostics for variables used after previously shadowed.
+func reportUsedAfterShadow(ctx context.Context, p *analysis.Pass, currentFile astutil.CurrentFile, fdecl inspector.Cursor, shadows []usage.ShadowUse, rename bool) {
+	if len(shadows) == 0 {
+		return
+	}
+
+	defer trace.StartRegion(ctx, "ReportShadowed").End()
+
+	var renamer *Renamer
+	if rename {
+		renamer = NewRenamer()
+	}
+
+	in := fdecl.Inspector()
+
+	for _, shadowed := range shadows {
+		use := shadowed.Use.Node(in)
+		if currentFile.NoLintComment(use.Pos()) {
+			continue
+		}
+
+		p.Report(analysis.Diagnostic{
+			Pos:            use.Pos(),
+			End:            use.End(),
+			Message:        fmt.Sprintf("Variable '%s' used after previously shadowed (sg:uas)", shadowed.Var.Name()),
+			Related:        []analysis.RelatedInformation{{Pos: shadowed.ShadowPos, Message: "After this declaration"}},
+			SuggestedFixes: renamer.Renames(p.TypesInfo, fdecl, shadowed.Var),
+		})
+	}
+}
 
 // Renamer handles the renaming of shadowed variables by generating unique names.
 //
 // It ensures uniqueness by checking the variable's scope hierarchy for naming conflicts.
-//
-// The Renamer uses lazy initialization for its internal maps, only allocating memory
-// when the first variable is renamed.
 type Renamer struct {
 	// renamed tracks variables that have already been processed to prevent duplicate renaming.
 	renamed map[*types.Var]struct{}
@@ -44,7 +78,10 @@ type Renamer struct {
 // NewRenamer creates a new Renamer instance.
 // The actual initialization of internal maps is deferred until the first call to [Renamer.Renames].
 func NewRenamer() *Renamer {
-	return &Renamer{}
+	return &Renamer{
+		renamed: make(map[*types.Var]struct{}),
+		count:   make(map[string]int),
+	}
 }
 
 // Renames generates [analysis.SuggestedFix]s to rename a shadowed variable.
@@ -61,52 +98,62 @@ func (r *Renamer) Renames(info *types.Info, fdecl inspector.Cursor, v *types.Var
 		return nil
 	}
 
-	name := v.Name()
+	// Mark this variable as renamed to prevent duplicate processing
+	r.renamed[v] = struct{}{}
 
-	suffix, ok := r.uniqueSuffix(v.Parent(), name)
+	name, parent := v.Name(), v.Parent()
+
+	suffix, ok := r.uniqueSuffix(parent, name)
 	if !ok {
 		return nil
 	}
 
-	offset := len(name)
+	scope, ok := fdecl.FindByPos(parent.Pos(), parent.End())
+	if !ok {
+		return nil
+	}
 
 	var edits []analysis.TextEdit
 
+	hasDef := false
+	offset := len(name)
+
 	// Find all occurrences of this variable (both definitions and uses)
-	for c := range fdecl.Preorder((*ast.Ident)(nil)) {
-		id, ok := c.Node().(*ast.Ident)
-		if !ok || !idIsVar(info, id, v) {
+	for c := range scope.Preorder((*ast.Ident)(nil)) {
+		id := c.Node().(*ast.Ident)
+
+		def, ok := idIsVar(info, id, v)
+		if !ok {
 			continue
+		}
+
+		if def {
+			hasDef = true
 		}
 
 		pos := token.Pos(int(id.NamePos) + offset)
 		edits = append(edits, analysis.TextEdit{Pos: pos, NewText: suffix})
 	}
 
-	if len(edits) == 0 {
+	// Avoid rename of implicit variables
+	if !hasDef {
 		return nil
 	}
-
-	// Mark this variable as renamed to prevent duplicate processing
-	if r.renamed == nil {
-		r.renamed = map[*types.Var]struct{}{}
-	}
-	r.renamed[v] = struct{}{}
 
 	return []analysis.SuggestedFix{{Message: "Rename variable " + name, TextEdits: edits}}
 }
 
 // idIsVar checks if the given identifier corresponds to the specified variable.
-func idIsVar(info *types.Info, id *ast.Ident, v *types.Var) bool {
+func idIsVar(info *types.Info, id *ast.Ident, v *types.Var) (def, ok bool) {
 	if use, ok := info.Uses[id]; ok {
-		return use == v
+		return false, use == v
 	}
 
 	if def, ok := info.Defs[id]; ok {
-		return def == v
+		return true, def == v
 	}
 
-	return false
+	return false, false
 }
 
 // uniqueSuffix generates a deterministic unique suffix for a variable name.
@@ -132,9 +179,6 @@ func (r *Renamer) uniqueSuffix(scope *types.Scope, name string) ([]byte, bool) {
 		}
 
 		// Found a unique name: persist the counter and return the suffix
-		if r.count == nil {
-			r.count = make(map[string]int)
-		}
 		r.count[name] = c
 
 		return []byte(suffix), true

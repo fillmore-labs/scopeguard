@@ -20,11 +20,12 @@ import (
 	"flag"
 
 	"fillmore-labs.com/scopeguard/internal/config"
+	"fillmore-labs.com/scopeguard/internal/run"
 )
 
 // RegisterFlags binds the [Options] values to command line flag values.
 // A nil flag set value defaults to the program's command line.
-func registerFlags(flags *flag.FlagSet, r *runOptions) {
+func registerFlags(flags *flag.FlagSet, r *run.Options) {
 	if flags == nil {
 		flags = flag.CommandLine
 	}
@@ -37,14 +38,14 @@ func registerFlags(flags *flag.FlagSet, r *runOptions) {
 
 	config := analyzeFlags[config.Config]{
 		{config.IncludeGenerated, "generated", "check generated files"},
-		{config.Conservative, "conservative", "enable conservative scope analysis"},
+		{config.Conservative, "conservative", "only apply conservative moves"},
 		{config.CombineDeclarations, "combine", "combine declaration when moving to initializers"},
-		{config.RenameVariables, "rename", "rename shadowed variables (experimental)"},
+		{config.RenameVariables, "rename", "rename shadowed variables"},
 	}
 
-	analyzers.register(flags, &r.analyzers)
-	config.register(flags, &r.behavior)
-	flags.IntVar(&r.maxLines, "max-lines", r.maxLines, "maximum declaration lines for moving to initializers")
+	analyzers.register(flags, &r.Analyzers)
+	config.register(flags, &r.Behavior)
+	flags.IntVar(&r.MaxLines, "max-lines", r.MaxLines, "maximum declaration lines for moving to initializers")
 }
 
 type analyzeFlags[T ~uint8] []struct {

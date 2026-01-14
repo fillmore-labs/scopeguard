@@ -16,8 +16,19 @@
 
 package config
 
-// AnalyzerFlags represents specific analyzers.
-type AnalyzerFlags uint8
+type (
+	// AnalyzerFlags represents specific analyzers.
+	AnalyzerFlags uint8
+
+	// Config represents configuration options for the analyzers.
+	Config uint8
+
+	// Analyzers is representing a set of enabled or disabled analyzer flags.
+	Analyzers = BitMask[AnalyzerFlags]
+
+	// Behavior is representing a set of configurable binary flags for behavior control.
+	Behavior = BitMask[Config]
+)
 
 const (
 	// ScopeAnalyzer enables scope-based analysis for identifying variable declarations and usage.
@@ -30,12 +41,12 @@ const (
 	NestedAssignAnalyzer
 )
 
-// Config represents configuration options for the analyzers.
-type Config uint8
-
 const (
 	// IncludeGenerated specifies whether to include analysis of generated files.
 	IncludeGenerated Config = 1 << iota
+
+	// FirstUseOnly specifies whether only the first use of a variable after being shadowed should be reported.
+	FirstUseOnly
 
 	// CombineDeclarations determines whether to combine declarations when moving to init statements.
 	CombineDeclarations
@@ -46,3 +57,13 @@ const (
 	// RenameVariables indicates that shadowed variables should be renamed.
 	RenameVariables
 )
+
+// DefaultAnalyzers returns a BitMask with default analyzers enabled.
+func DefaultAnalyzers() BitMask[AnalyzerFlags] {
+	return BitMask[AnalyzerFlags]{ScopeAnalyzer | ShadowAnalyzer | NestedAssignAnalyzer}
+}
+
+// DefaultBehavior returns a BitMask with default behavior settings.
+func DefaultBehavior() BitMask[Config] {
+	return BitMask[Config]{FirstUseOnly | CombineDeclarations | RenameVariables}
+}

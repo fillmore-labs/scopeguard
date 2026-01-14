@@ -21,9 +21,14 @@ type BitMask[T ~uint8 | ~uint16 | ~uint32 | ~uint64] struct { // constraints.Int
 	value T
 }
 
-// NewBitMask creates a new typed [BitMask] instance with the specified initial value.
-func NewBitMask[T ~uint8 | ~uint16 | ~uint32 | ~uint64](value T) BitMask[T] {
-	return BitMask[T]{value: value}
+// NewBitMask creates a new typed [BitMask] instance with the specified flags enabled.
+func NewBitMask[T ~uint8 | ~uint16 | ~uint32 | ~uint64](flags ...T) BitMask[T] {
+	var b BitMask[T]
+	for _, flag := range flags {
+		b.Enable(flag)
+	}
+
+	return b
 }
 
 // Set adjusts the bitmask by enabling or disabling the specified option.

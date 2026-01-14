@@ -96,23 +96,17 @@ var nolintPattern = regexp.MustCompile(`^//\s*nolint:([a-zA-Z0-9,_-]+)`)
 
 // CommentHasNoLint checks if the provided comment contains a `//nolint:scopeguard` directive.
 func CommentHasNoLint(comment *ast.Comment) bool {
-	linters, ok := parseDirective(comment.Text)
-
-	return ok && slices.Contains(linters, scopeguard)
-}
-
-// parseDirective extracts linter names from a nolint comment.
-func parseDirective(text string) (linters []string, ok bool) {
-	matches := nolintPattern.FindStringSubmatch(text)
+	matches := nolintPattern.FindStringSubmatch(comment.Text)
 	if matches == nil {
-		return nil, false
+		return false
 	}
 
 	// Parse comma-separated linter list
-	linters = strings.Split(matches[1], ",")
-	for i, l := range linters {
-		linters[i] = strings.ToLower(strings.TrimSpace(l))
+	for linter := range strings.SplitSeq(matches[1], ",") {
+		if l := strings.ToLower(strings.TrimSpace(linter)); l == scopeguard || l == "all" {
+			return true
+		}
 	}
 
-	return linters, true
+	return false
 }

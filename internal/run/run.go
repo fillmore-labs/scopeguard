@@ -14,7 +14,7 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-package analyzer
+package run
 
 import (
 	"context"
@@ -41,8 +41,8 @@ import (
 // Requires field is not properly set.
 var ErrResultMissing = errors.New("analyzer result missing")
 
-// run executes the scopeguard analyzer's pipeline.
-func (r *runOptions) run(p *analysis.Pass) (any, error) {
+// Run executes the scopeguard analyzer's pipeline.
+func (r *Options) Run(p *analysis.Pass) (any, error) {
 	// Retrieves the [inspector.Inspector] from the pass results.
 	in, ok := p.ResultOf[inspect.Analyzer].(*inspector.Inspector)
 	if !ok {
@@ -54,61 +54,56 @@ func (r *runOptions) run(p *analysis.Pass) (any, error) {
 	ctx, task := trace.NewTask(ctx, "ScopeGuard")
 	defer task.End()
 
+	trace.Log(ctx, "package", p.Pkg.Path())
+
 	// Build inverted scope->node map for bidirectional AST/scope navigation
-	scopes := scope.NewIndex(p.TypesInfo.Scopes)
+	scopes := scope.NewIndex(p.TypesInfo)
 
-	us := usage.Stage{
-		Pass:       p,
-		UsageScope: scope.NewUsageScope(scopes),
-		Analyzers:  r.analyzers,
-	}
+	us := usage.New(p, scopes, r.Analyzers, r.Behavior)
 
-	ts := target.Stage{
-		Pass:         p,
-		TargetScope:  scope.NewTargetScope(scopes),
-		MaxLines:     r.maxLines,
-		Conservative: r.behavior.Enabled(config.Conservative),
-		Combine:      r.behavior.Enabled(config.CombineDeclarations),
-	}
+	ts := target.New(p, scopes, r.MaxLines, r.Behavior)
 
 	// Remember the current file over all functions declared in it
 	var currentFile astutil.CurrentFile
 
-	// Loop over all function and method declarations
-	root, types := in.Root(), []ast.Node{
-		(*ast.File)(nil),
-		(*ast.FuncDecl)(nil),
-	}
+	// Loop over all files
+	for f := range in.Root().Children() {
+		file := f.Node().(*ast.File)
 
-	// Loop over all function and method declarations
-	root.Inspect(types, func(i inspector.Cursor) bool {
-		switch node := i.Node().(type) {
-		case *ast.File:
-			currentFile = astutil.NewCurrentFile(p.Fset, node)
-			descend := r.behavior.Enabled(config.IncludeGenerated) || !currentFile.Generated()
+		currentFile = astutil.NewCurrentFile(p.Fset, file)
+		if !currentFile.Valid() {
+			astutil.InternalError(p, file, "File %s without valid info", file.Name.Name)
 
-			return descend
+			continue
+		}
 
-		case *ast.FuncDecl:
-			if node.Body == nil {
-				return false
-			}
+		// Skip generated files
+		if currentFile.Generated() && !r.Behavior.Enabled(config.IncludeGenerated) {
+			continue
+		}
 
-			if !currentFile.Valid() {
-				astutil.InternalError(p, node, "Function declaration %s without file info", node.Name.Name)
+		// Skip files with nolint comment
+		if file.Doc != nil && astutil.CommentHasNoLint(file.Doc.List[len(file.Doc.List)-1]) {
+			continue
+		}
 
-				return false
+		// Loop over all function and method declarations in this file
+		for c := range f.Preorder((*ast.FuncDecl)(nil)) {
+			fun := c.Node().(*ast.FuncDecl)
+
+			if fun.Body == nil {
+				continue
 			}
 
 			// Skip functions with nolint comment
-			if node.Doc != nil && astutil.CommentHasNoLint(node.Doc.List[len(node.Doc.List)-1]) {
-				return false
+			if fun.Doc != nil && astutil.CommentHasNoLint(fun.Doc.List[len(fun.Doc.List)-1]) {
+				continue
 			}
 
-			body := i.ChildAt(edge.FuncDecl_Body, -1)
+			body := c.ChildAt(edge.FuncDecl_Body, -1)
 
 			// Stage 1: Collect all movable variable declarations and track variable uses
-			usageData, usageDiagnostics := us.TrackUsage(ctx, body, node)
+			usageData, usageDiagnostics := us.TrackUsage(ctx, body, fun)
 
 			var moves []target.MoveTarget
 
@@ -119,21 +114,15 @@ func (r *runOptions) run(p *analysis.Pass) (any, error) {
 			}
 
 			diagnostics := report.Diagnostics{
+				CurrentFile: currentFile,
 				Moves:       moves,
 				Diagnostics: usageDiagnostics,
 			}
 
 			// Stage 3: Generate diagnostics with suggested fixes
-			report.ProcessDiagnostics(ctx, p, currentFile, i, diagnostics, r.behavior)
-
-			return true
-
-		default:
-			astutil.InternalError(p, node, "Unexpected node type: %T", node)
-
-			return false
+			report.ProcessDiagnostics(ctx, p, c, diagnostics, r.Behavior)
 		}
-	})
+	}
 
 	return nil, nil
 }

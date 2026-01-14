@@ -36,36 +36,55 @@ import (
 type Stage struct {
 	*analysis.Pass
 	scope.UsageScope
-	Analyzers config.BitMask[config.AnalyzerFlags]
+	analyzers config.Analyzers
+	behavior  config.Behavior
+}
+
+// New initializes a [usage.Stage].
+func New(p *analysis.Pass, scopes scope.Index, analyzers config.Analyzers, behavior config.Behavior) Stage {
+	return Stage{
+		Pass:       p,
+		UsageScope: scope.NewUsageScope(scopes),
+		analyzers:  analyzers,
+		behavior:   behavior,
+	}
 }
 
 // TrackUsage collects variable declarations and tracks their usages to determine the minimum scope.
 func (us Stage) TrackUsage(ctx context.Context, body inspector.Cursor, f *ast.FuncDecl) (Result, Diagnostics) {
 	defer trace.StartRegion(ctx, "Usage").End()
 
-	uc := us.newUsageCollector()
+	trace.Log(ctx, "function", f.Name.Name)
 
-	uc.handleFunc(body, f.Recv, f.Type)
-	uc.inspectBody(body, f.Type.Results)
+	c := us.newUsageCollector()
 
-	return uc.result()
+	c.handleFunc(ctx, body, f.Recv, f.Type)
+
+	return c.result()
 }
 
 // newUsageCollector creates a new usage collector for analyzing a function body.
 func (us Stage) newUsageCollector() collector {
-	var scopeRanges map[astutil.NodeIndex]ScopeRange
+	var (
+		scopeEnabled  = us.analyzers.Enabled(config.ScopeAnalyzer)
+		shadowEnabled = us.analyzers.Enabled(config.ShadowAnalyzer)
+		nestedEnabled = us.analyzers.Enabled(config.NestedAssignAnalyzer)
+		firstUseOnly  = us.behavior.Enabled(config.FirstUseOnly)
 
-	if us.Analyzers.Enabled(config.ScopeAnalyzer) {
+		scopeRanges map[astutil.NodeIndex]ScopeRange
+	)
+
+	if scopeEnabled {
 		scopeRanges = make(map[astutil.NodeIndex]ScopeRange)
 	}
 
 	return collector{
 		Pass:          us.Pass,
 		UsageScope:    us.UsageScope,
-		ShadowChecker: check.NewShadowChecker(us.Analyzers.Enabled(config.ShadowAnalyzer)),
-		NestedChecker: check.NewNestedChecker(us.Analyzers.Enabled(config.NestedAssignAnalyzer)),
+		ShadowChecker: check.NewShadowChecker(shadowEnabled, firstUseOnly),
+		NestedChecker: check.NewNestedChecker(nestedEnabled),
 		scopeRanges:   scopeRanges,
 		current:       make(map[*types.Var]declUsage),
-		usages:        make(map[*types.Var][]NodeUsage),
+		declarations:  make(map[*types.Var][]DeclarationNode),
 	}
 }

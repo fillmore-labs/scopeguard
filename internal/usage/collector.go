@@ -17,6 +17,7 @@
 package usage
 
 import (
+	"context"
 	"go/ast"
 	"go/token"
 	"go/types"
@@ -26,6 +27,7 @@ import (
 	"golang.org/x/tools/go/ast/inspector"
 
 	"fillmore-labs.com/scopeguard/internal/astutil"
+	"fillmore-labs.com/scopeguard/internal/reachability"
 	"fillmore-labs.com/scopeguard/internal/scope"
 	"fillmore-labs.com/scopeguard/internal/usage/check"
 )
@@ -47,9 +49,9 @@ type collector struct {
 	// scopeRanges maps declaration indices to their scope ranges (declaration scope + usage scope).
 	scopeRanges map[astutil.NodeIndex]ScopeRange
 
-	// usages maps variables to their usages history.
+	// declarations maps variables to their declaration history.
 	// The first entry is typically the initial declaration; subsequent entries are reassignments.
-	usages map[*types.Var][]NodeUsage
+	declarations map[*types.Var][]DeclarationNode
 
 	// current maps variables to their current (re)declaration.
 	current map[*types.Var]declUsage
@@ -70,57 +72,100 @@ type declUsage struct {
 // result returns the collected usage information.
 func (c *collector) result() (Result, Diagnostics) {
 	return Result{
-			scopeRanges: c.scopeRanges,
-			usages:      c.usages,
+			scopeRanges:  c.scopeRanges,
+			declarations: c.declarations,
 		}, Diagnostics{
 			Shadows: c.UsedAfterShadow(),
 			Nested:  c.NestedAssigned(),
 		}
 }
 
-// inspectBody traverses the AST of a function body to collect:
+// handleFunc traverses the AST of a function body to collect:
 //   - Short variable declarations (x :=)
 //   - Var declarations (var x int)
 //   - Variable usages
 //
 // For each declaration, it tracks the tightest scope containing all usages,
 // which determines if the declaration can be moved to a narrower scope.
-func (c *collector) inspectBody(body inspector.Cursor, results *ast.FieldList) {
+func (c *collector) handleFunc(ctx context.Context, body inspector.Cursor, recv *ast.FieldList, fun *ast.FuncType) {
+	bodyNode := body.Node().(*ast.BlockStmt)
+
+	oldgraph := c.Graph
+	if c.ShadowCheckerEnabled() {
+		c.Graph = reachability.NewGraph(ctx, c.TypesInfo, recv, fun, bodyNode, true)
+	}
+
+	// Processes function parameters and results, recording their declarations.
+	params, results := fun.Params, fun.Results
+
+	decl, start := astutil.NodeIndexOf(body.Parent()), bodyNode.Pos()
+
+	for _, list := range [...]*ast.FieldList{recv, params, results} {
+		if list == nil {
+			continue
+		}
+
+		for _, names := range list.List {
+			for _, id := range names.Names {
+				if id.Name == "_" {
+					continue // blank identifier
+				}
+
+				v, ok := c.TypesInfo.Defs[id].(*types.Var)
+				if !ok {
+					continue
+				}
+
+				// Parameter / result declaration
+				c.current[v] = declUsage{start: start, ignore: id.NamePos}
+				c.declarations[v] = []DeclarationNode{{Decl: decl, Usage: UsageUsed}}
+			}
+		}
+	}
+
+	if c.scopeRanges != nil {
+		funScope := c.TypesInfo.Scopes[fun]
+		c.scopeRanges[decl] = ScopeRange{Decl: funScope, Usage: funScope} // Not movable
+	}
+
+	// Does the function have named result parameters?
+	namedResults := results != nil && len(results.List) > 0 && len(results.List[0].Names) > 0
+
 	nodes := []ast.Node{
 		// keep-sorted start
 		(*ast.AssignStmt)(nil),
+		(*ast.CaseClause)(nil),
 		(*ast.DeclStmt)(nil),
 		(*ast.FuncLit)(nil),
 		(*ast.Ident)(nil),
 		(*ast.RangeStmt)(nil),
+		(*ast.ReturnStmt)(nil),
 		// keep-sorted end
 	}
 
-	if hasNamedResults(results) {
-		// We only need to check return statements for named results.
-		nodes = append(nodes, (*ast.ReturnStmt)(nil))
-	}
-
 	body.Inspect(nodes, func(i inspector.Cursor) bool {
-		switch n := i.Node().(type) {
+		switch idx := astutil.NodeIndexOf(i); n := i.Node().(type) {
 		// keep-sorted start newline_separated=yes
 		case *ast.AssignStmt:
 			switch n.Tok {
 			case token.ASSIGN:
-				c.handleAssignedVars(n.Lhs, n.End(), astutil.NodeIndexOf(i))
+				c.handleAssignedVars(n.Lhs, n.End(), idx)
 
 			case token.DEFINE:
 				switch kind, _ := i.ParentEdge(); kind {
-				case edge.CommClause_Comm: // Don't consider short declarations in select cases
-					c.handleReceiveStmt(n, astutil.NodeIndexOf(i))
+				case edge.CommClause_Comm:
+					c.handleReceiveStmt(n, idx)
 					return true
 
 				case edge.TypeSwitchStmt_Assign: // Don't consider short declarations in type switches
 					return true
 				}
 
-				c.handleShortDecl(n, astutil.NodeIndexOf(i))
+				c.handleShortDecl(n, idx)
 			}
+
+		case *ast.CaseClause:
+			c.handleCaseClause(n, idx)
 
 		case *ast.DeclStmt:
 			gen, ok := n.Decl.(*ast.GenDecl)
@@ -128,14 +173,13 @@ func (c *collector) inspectBody(body inspector.Cursor, results *ast.FieldList) {
 				break
 			}
 
-			c.handleDeclStmt(gen, astutil.NodeIndexOf(i))
+			c.handleDeclStmt(gen, idx)
 
 		case *ast.FuncLit:
 			fbody, ftype := i.ChildAt(edge.FuncLit_Body, -1), n.Type
-			c.handleFunc(fbody, nil, ftype)
 
 			// Traverse recursively with different return values
-			c.inspectBody(fbody, ftype.Results)
+			c.handleFunc(ctx, fbody, nil, ftype)
 
 			return false // Visited recursively in inspectBody, do not descend
 
@@ -144,7 +188,7 @@ func (c *collector) inspectBody(body inspector.Cursor, results *ast.FieldList) {
 				break
 			}
 
-			c.handleIdent(n, astutil.NodeIndexOf(i))
+			c.handleIdent(n, idx)
 
 		case *ast.RangeStmt:
 			if n.Key == nil {
@@ -153,27 +197,25 @@ func (c *collector) inspectBody(body inspector.Cursor, results *ast.FieldList) {
 
 			switch n.Tok {
 			case token.ASSIGN:
-				c.handleAssignedVars([]ast.Expr{n.Key, n.Value}, n.Body.Pos(), astutil.NodeIndexOf(i))
+				c.handleAssignedVars([]ast.Expr{n.Key, n.Value}, n.Body.Pos(), idx)
 
 			case token.DEFINE:
-				c.handleRangeStmt(n, astutil.NodeIndexOf(i))
+				c.handleRangeStmt(n, idx)
 			}
 
 		case *ast.ReturnStmt:
-			if len(n.Results) > 0 {
+			if !namedResults || len(n.Results) > 0 {
 				break
 			}
 
-			c.handleNamedResults(astutil.NodeIndexOf(i), results, n.Pos())
+			// Bare return of named results, mark them as used
+			c.handleNamedResults(idx, results, n.Pos())
 
 			// keep-sorted end
 		}
 
 		return true
 	})
-}
 
-// hasNamedResults reports whether the function has named result parameters.
-func hasNamedResults(results *ast.FieldList) bool {
-	return results != nil && len(results.List) > 0 && len(results.List[0].Names) > 0
+	c.Graph = oldgraph
 }

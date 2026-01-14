@@ -47,29 +47,29 @@ func IntervalInert(info *types.Info, parent inspector.Cursor, absorbedDecls []as
 	for s := range parent.Preorder(
 		// keep-sorted start
 		(*ast.AssignStmt)(nil),
+		(*ast.BadStmt)(nil),
 		(*ast.BranchStmt)(nil),
 		(*ast.CaseClause)(nil),
-		(*ast.CommClause)(nil),
 		(*ast.DeferStmt)(nil),
 		(*ast.ExprStmt)(nil),
 		(*ast.ForStmt)(nil),
-		(*ast.GenDecl)(nil),
+		(*ast.DeclStmt)(nil),
 		(*ast.GoStmt)(nil),
 		(*ast.IfStmt)(nil),
 		(*ast.IncDecStmt)(nil),
 		(*ast.LabeledStmt)(nil),
 		(*ast.RangeStmt)(nil),
 		(*ast.ReturnStmt)(nil),
-		(*ast.SelectStmt)(nil),
 		(*ast.SendStmt)(nil),
-		(*ast.SwitchStmt)(nil),
-		(*ast.TypeSwitchStmt)(nil),
 		// keep-sorted end
 
-		// Note regarding missing ast.Stmt types:
-		// - *ast.BlockStmt is covered by its sub-statements
-		// - *ast.DeclStmt is covered by *ast.GenDecl
-		// - *ast.EmptyStmt has no side effects
+		// Note regarding missing [ast.Stmt] types:
+		// - *[ast.BlockStmt] is covered by its [ast.BlockStmt.List] sub-statements
+		// - *[ast.CommClause] is covered by [ast.CommClause.Comm] and [ast.CommClause.Body]
+		// - *[ast.EmptyStmt] has no side effects
+		// - *[ast.SelectStmt] is covered by [ast.SelectStmt.Body]
+		// - *[ast.SwitchStmt] is covered by [ast.SwitchStmt.Init] and [ast.SwitchStmt.Body]
+		// - *[ast.TypeSwitchStmt] is covered by [ast.TypeSwitchStmt.Init] and [ast.TypeSwitchStmt.Body]
 	) {
 		n := s.Node()
 
@@ -77,7 +77,7 @@ func IntervalInert(info *types.Info, parent inspector.Cursor, absorbedDecls []as
 			break // We've moved past the area of interest
 		}
 
-		if n.End() <= start {
+		if n.Pos() < start {
 			continue // Before the start of the interval
 		}
 
@@ -85,22 +85,31 @@ func IntervalInert(info *types.Info, parent inspector.Cursor, absorbedDecls []as
 			continue
 		}
 
-		switch stmt := n.(type) {
-		case *ast.AssignStmt:
-			if inertShortDecl(info, stmt) {
-				continue // Safe declaration
-			}
-
-		case *ast.GenDecl:
-			if inertVarDecl(info, stmt) {
-				continue // Safe declaration
-			}
+		if InertStmt(info, n) {
+			continue // Safe
 		}
 
 		return false // Found a statement with potential side effects
 	}
 
 	return true
+}
+
+// InertStmt determines if a statement is "inert," meaning it has no side effects or observable interactions.
+func InertStmt(info *types.Info, node ast.Node) bool {
+	switch stmt := node.(type) {
+	case *ast.AssignStmt:
+		return inertShortDecl(info, stmt)
+
+	case *ast.DeclStmt:
+		return inertVarDecl(info, stmt)
+
+	case *ast.EmptyStmt:
+		return true
+
+	default:
+		return false
+	}
 }
 
 // inertShortDecl analyzes an assignment statement to determine if it declares a
@@ -115,20 +124,11 @@ func inertShortDecl(info *types.Info, stmt *ast.AssignStmt) bool {
 		return false
 	}
 
-	for _, id := range stmt.Lhs {
-		id, ok := id.(*ast.Ident)
-		if !ok {
-			return false
-		}
-
-		if id.Name == "_" {
-			continue
-		}
-
+	for id := range astutil.AllAssigned(stmt) {
 		// Ensure the identifier defines a new object.
-		// If Defs[id] is nil, it means it's a reassignment of an existing variable,
+		// If its not in Defs[id], it means it's a reassignment of an existing variable,
 		// which is a side effect we must avoid.
-		if obj, ok := info.Defs[id]; !ok || obj == nil {
+		if _, ok := info.Defs[id]; !ok {
 			return false
 		}
 	}
@@ -143,12 +143,13 @@ func inertShortDecl(info *types.Info, stmt *ast.AssignStmt) bool {
 }
 
 // inertVarDecl checks if a GenDecl AST node represents a `var` declaration that includes initialization values.
-func inertVarDecl(info *types.Info, stmt *ast.GenDecl) bool {
-	if stmt.Tok != token.VAR { // type declaration and const are safe
+func inertVarDecl(info *types.Info, stmt *ast.DeclStmt) bool {
+	decl := stmt.Decl.(*ast.GenDecl)
+	if decl.Tok != token.VAR { // type declaration and const are safe
 		return true
 	}
 
-	for _, spec := range stmt.Specs {
+	for _, spec := range decl.Specs {
 		// A ValueSpec with values implies execution (initialization).
 		if spec, ok := spec.(*ast.ValueSpec); ok {
 			for _, expr := range spec.Values {
@@ -165,27 +166,50 @@ func inertVarDecl(info *types.Info, stmt *ast.GenDecl) bool {
 
 // inertExpr determines if an expression has no side effects, such as being a constant or involving `new` with constant arguments.
 func inertExpr(info *types.Info, expr ast.Expr) bool {
-	if tv, ok := info.Types[expr]; ok && tv.Value != nil {
+	// Check for type or constant argument
+	if tv, ok := info.Types[expr]; ok && (tv.IsType() || tv.Value != nil) {
 		return true
 	}
 
-	// Check for new(...)
-	call, ok := ast.Unparen(expr).(*ast.CallExpr)
-	if !ok || !builtin(info, call.Fun) {
-		return false
-	}
+unpack:
+	switch ex := expr.(type) {
+	case *ast.ParenExpr:
+		expr = ex.X
+		goto unpack
 
-	for _, arg := range call.Args {
-		// Check for type or constant argument
-		if tv, ok := info.Types[arg]; !ok || !tv.IsType() && tv.Value == nil {
+	case *ast.CallExpr:
+		// Check for new(...), make(...)
+		if !builtin(info, ex.Fun) {
 			return false
 		}
-	}
 
-	return true
+		for _, arg := range ex.Args {
+			if !inertExpr(info, arg) {
+				return false
+			}
+		}
+
+		return true
+
+	case *ast.UnaryExpr:
+		expr = ex.X
+		goto unpack
+
+	case *ast.CompositeLit:
+		for _, e := range ex.Elts {
+			if !inertExpr(info, e) {
+				return false
+			}
+		}
+
+		return true
+
+	default:
+		return false
+	}
 }
 
-// builtin checks if the call expression is a call to the built-in `new` function.
+// builtin checks if the call expression is a call to the built-in `new` or `make` function.
 func builtin(info *types.Info, fun ast.Expr) bool {
 	id, ok := ast.Unparen(fun).(*ast.Ident)
 	if !ok || id.Name != "new" && id.Name != "make" {

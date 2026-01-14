@@ -38,7 +38,7 @@ func TestAnalyzer(t *testing.T) {
 		{
 			name:    "Default",
 			dir:     "./a",
-			options: Options{WithGenerated(true), WithMaxLines(5)},
+			options: Options{WithGenerated(true), WithMaxLines(5), WithRename(false)},
 			fix:     true,
 		},
 		{
@@ -55,6 +55,12 @@ func TestAnalyzer(t *testing.T) {
 			name:    "Combine",
 			dir:     "./combine",
 			options: WithCombine(true),
+			fix:     true,
+		},
+		{
+			name:    "Shadow",
+			dir:     "./shadow",
+			options: Options{WithConservative(true), WithScope(false), WithNestedAssign(false), WithRename(false)},
 			fix:     true,
 		},
 		{

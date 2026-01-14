@@ -33,8 +33,8 @@ type ScopeRange struct {
 	Usage *types.Scope
 }
 
-// NodeUsage tracks a single usage of a declaration.
-type NodeUsage struct {
+// DeclarationNode tracks a (re-)declaration node and its usages.
+type DeclarationNode struct {
 	Decl  astutil.NodeIndex
 	Usage Flags
 }
@@ -52,7 +52,7 @@ const (
 	// UsageUntypedNil indicates the variable redeclaration is assigned to untyped nil.
 	UsageUntypedNil
 
-	// UsageNone indicates the variable declaration is unused.
+	// UsageNone indicates the variable redeclaration is unused.
 	UsageNone Flags = 0
 
 	// UsageUsedAndTypeChange represents a combination of [UsageUsed] and [UsageTypeChange] flags.
@@ -84,8 +84,8 @@ type Result struct {
 	// Map from declaration indices to their computed scope ranges.
 	scopeRanges map[astutil.NodeIndex]ScopeRange
 
-	// Map of variables to usage.
-	usages map[*types.Var][]NodeUsage
+	// Map of variables to declaration.
+	declarations map[*types.Var][]DeclarationNode
 }
 
 // HasScopeRanges checks if any scope ranges are present in the result.
@@ -98,9 +98,9 @@ func (u Result) AllScopeRanges() iter.Seq2[astutil.NodeIndex, ScopeRange] {
 	return maps.All(u.scopeRanges)
 }
 
-// AllUsages returns an iterator over all variables and their corresponding usage lists.
-func (u Result) AllUsages() iter.Seq2[*types.Var, []NodeUsage] {
-	return maps.All(u.usages)
+// AllDeclarations returns an iterator over all variables and their corresponding usage lists.
+func (u Result) AllDeclarations() iter.Seq2[*types.Var, []DeclarationNode] {
+	return maps.All(u.declarations)
 }
 
 // Diagnostics contains findings from the usage analysis stage.

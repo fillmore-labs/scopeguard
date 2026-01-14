@@ -20,11 +20,12 @@ import (
 	"log/slog"
 
 	"fillmore-labs.com/scopeguard/internal/config"
+	"fillmore-labs.com/scopeguard/internal/run"
 )
 
 // Option configures specific behavior of a [New] scopeguard analyzer.
 type Option interface {
-	apply(r *runOptions)
+	apply(r *run.Options)
 	LogAttr() slog.Attr
 }
 
@@ -56,7 +57,7 @@ func appendOptions(as []slog.Attr, o Options) []slog.Attr {
 	return as
 }
 
-func (o Options) apply(r *runOptions) {
+func (o Options) apply(r *run.Options) {
 	for _, opt := range o {
 		if opt == nil {
 			continue
@@ -76,8 +77,8 @@ func WithGenerated(generated bool) Option { return generatedOption{generated: ge
 
 type generatedOption struct{ generated bool }
 
-func (o generatedOption) apply(r *runOptions) {
-	r.behavior.Set(config.IncludeGenerated, o.generated)
+func (o generatedOption) apply(r *run.Options) {
+	r.Behavior.Set(config.IncludeGenerated, o.generated)
 }
 
 func (o generatedOption) LogAttr() slog.Attr {
@@ -89,8 +90,8 @@ func WithMaxLines(maxLines int) Option { return maxLinesOption{maxLines: maxLine
 
 type maxLinesOption struct{ maxLines int }
 
-func (o maxLinesOption) apply(r *runOptions) {
-	r.maxLines = o.maxLines
+func (o maxLinesOption) apply(r *run.Options) {
+	r.MaxLines = o.maxLines
 }
 
 func (o maxLinesOption) LogAttr() slog.Attr {
@@ -104,8 +105,8 @@ func WithScope(scope bool) Option {
 
 type scopeOption struct{ scope bool }
 
-func (o scopeOption) apply(r *runOptions) {
-	r.analyzers.Set(config.ScopeAnalyzer, o.scope)
+func (o scopeOption) apply(r *run.Options) {
+	r.Analyzers.Set(config.ScopeAnalyzer, o.scope)
 }
 
 func (o scopeOption) LogAttr() slog.Attr {
@@ -119,8 +120,8 @@ func WithShadow(shadow bool) Option {
 
 type shadowOption struct{ shadow bool }
 
-func (o shadowOption) apply(r *runOptions) {
-	r.analyzers.Set(config.ShadowAnalyzer, o.shadow)
+func (o shadowOption) apply(r *run.Options) {
+	r.Analyzers.Set(config.ShadowAnalyzer, o.shadow)
 }
 
 func (o shadowOption) LogAttr() slog.Attr {
@@ -134,8 +135,8 @@ func WithNestedAssign(nestedAssign bool) Option {
 
 type nestedAssignOption struct{ nestedAssign bool }
 
-func (o nestedAssignOption) apply(r *runOptions) {
-	r.analyzers.Set(config.NestedAssignAnalyzer, o.nestedAssign)
+func (o nestedAssignOption) apply(r *run.Options) {
+	r.Analyzers.Set(config.NestedAssignAnalyzer, o.nestedAssign)
 }
 
 func (o nestedAssignOption) LogAttr() slog.Attr {
@@ -149,8 +150,8 @@ func WithConservative(conservative bool) Option {
 
 type conservativeOption struct{ conservative bool }
 
-func (o conservativeOption) apply(r *runOptions) {
-	r.behavior.Set(config.Conservative, o.conservative)
+func (o conservativeOption) apply(r *run.Options) {
+	r.Behavior.Set(config.Conservative, o.conservative)
 }
 
 func (o conservativeOption) LogAttr() slog.Attr {
@@ -162,8 +163,8 @@ func WithCombine(combine bool) Option { return combineOption{combine: combine} }
 
 type combineOption struct{ combine bool }
 
-func (o combineOption) apply(r *runOptions) {
-	r.behavior.Set(config.CombineDeclarations, o.combine)
+func (o combineOption) apply(r *run.Options) {
+	r.Behavior.Set(config.CombineDeclarations, o.combine)
 }
 
 func (o combineOption) LogAttr() slog.Attr {
@@ -175,8 +176,8 @@ func WithRename(rename bool) Option { return renameOption{rename: rename} }
 
 type renameOption struct{ rename bool }
 
-func (o renameOption) apply(r *runOptions) {
-	r.behavior.Set(config.RenameVariables, o.rename)
+func (o renameOption) apply(r *run.Options) {
+	r.Behavior.Set(config.RenameVariables, o.rename)
 }
 
 func (o renameOption) LogAttr() slog.Attr {

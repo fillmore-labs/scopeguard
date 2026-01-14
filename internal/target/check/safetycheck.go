@@ -26,7 +26,7 @@ import (
 )
 
 // SafetyCheck evaluates a move candidate against safety rules.
-func SafetyCheck(info *types.Info, decl inspector.Cursor, declScope, targetScope *types.Scope, identifiers iter.Seq[string]) MoveStatus {
+func SafetyCheck(info *types.Info, decl inspector.Cursor, declScope, targetScope *types.Scope, identifiers iter.Seq[*ast.Ident]) MoveStatus {
 	// Check if identifiers are already declared in the target scope
 	if alreadyDeclaredInScope(targetScope, identifiers) {
 		return MoveBlockedDeclared
@@ -41,10 +41,10 @@ func SafetyCheck(info *types.Info, decl inspector.Cursor, declScope, targetScope
 }
 
 // alreadyDeclaredInScope checks whether any identifier is already declared in the target scope.
-func alreadyDeclaredInScope(safeScope *types.Scope, identifiers iter.Seq[string]) bool {
-	for name := range identifiers {
+func alreadyDeclaredInScope(safeScope *types.Scope, identifiers iter.Seq[*ast.Ident]) bool {
+	for id := range identifiers {
 		// Check whether the identifier already exists at that level
-		if safeScope.Lookup(name) != nil {
+		if safeScope.Lookup(id.Name) != nil {
 			return true
 		}
 	}

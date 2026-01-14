@@ -24,9 +24,10 @@ import (
 	"fillmore-labs.com/scopeguard/internal/astutil"
 )
 
-// handleAssignedVars processes a list of expressions (LHS of an assignment) to extract
-// variables being assigned to. It filters for identified variables (ignoring blank identifiers
-// and non-variable expressions) and delegates tracking to trackVars.
+// handleAssignedVars processes a list of expressions (LHS of an assignment) to update shadow and
+// usage tracking for variables being assigned to. It filters for identified variables (ignoring blank identifiers
+// and non-variable expressions) and handles deduplication to ensure a variable is processed only once per assignment
+// (e.g. "x, x = 1, 2").
 //
 // Parameters:
 //   - exprs: The list of expressions on the left-hand side of the assignment.
@@ -35,7 +36,7 @@ import (
 func (c *collector) handleAssignedVars(exprs []ast.Expr, assignmentDone token.Pos, asgn astutil.NodeIndex) {
 	uses := c.TypesInfo.Uses
 
-	vars := make([]assignedVar, 0, len(exprs))
+	var done map[*types.Var]struct{}
 
 	for _, expr := range exprs {
 		id, ok := ast.Unparen(expr).(*ast.Ident)
@@ -48,44 +49,32 @@ func (c *collector) handleAssignedVars(exprs []ast.Expr, assignmentDone token.Po
 			continue
 		}
 
-		vars = append(vars, assignedVar{v, id})
-	}
-
-	c.trackVars(vars, assignmentDone, asgn)
-}
-
-// trackVars updates shadow and usage tracking for a list of assigned variables.
-// It handles deduplication to ensure a variable is processed only once per assignment
-// (e.g. "x, x = 1, 2").
-//
-// Parameters:
-//   - vars: The list of variables extracted from the assignment.
-//   - assignmentDone: The position where the assignment is considered complete.
-//   - asgn: The index of the assignment node.
-func (c *collector) trackVars(vars []assignedVar, assignmentDone token.Pos, asgn astutil.NodeIndex) {
-	if len(vars) == 0 {
-		return
-	}
-
-	done := make(map[*types.Var]struct{})
-	for _, vid := range vars {
-		// Filter out duplicate occurrences, like x, x = ...
-		if _, ok := done[vid.Var]; ok {
+		if done == nil {
+			done = make(map[*types.Var]struct{})
+		} else if _, ok := done[v]; ok {
+			// Filter out duplicate occurrences, like x, x = ...
 			continue
 		}
 
-		done[vid.Var] = struct{}{}
+		done[v] = struct{}{}
 
-		c.UpdateShadows(vid.Var, vid.Ident, assignmentDone)
+		isDeclScope := true
 
-		c.TrackAssignment(vid.Var, vid.Ident, assignmentDone, asgn)
+		for child := range v.Parent().Children() {
+			if child.Contains(id.NamePos) {
+				isDeclScope = false
+				break
+			}
+		}
+
+		if isDeclScope {
+			// Reassigned at declaration scope
+			c.UpdateShadows(v, id, assignmentDone)
+		} else {
+			// Reassigned in a subscope
+			c.UpdateShadowsWithReachability(v, id, assignmentDone)
+		}
+
+		c.TrackNestedAssignment(v, id, assignmentDone, asgn)
 	}
-}
-
-// assignedVar captures a variable and the specific identifier used in an assignment.
-type assignedVar struct {
-	// Var is the type-checked variable object.
-	*types.Var
-	// Ident is the AST identifier node corresponding to this variable usage.
-	*ast.Ident
 }
