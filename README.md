@@ -1,11 +1,11 @@
 # ScopeGuard
 
 [![Go Reference](https://pkg.go.dev/badge/fillmore-labs.com/scopeguard.svg)](https://pkg.go.dev/fillmore-labs.com/scopeguard)
-[![Test](https://github.com/fillmore-labs/scopeguard/actions/workflows/test.yml/badge.svg?branch=main)](https://github.com/fillmore-labs/scopeguard/actions/workflows/test.yml)
-[![CodeQL](https://github.com/fillmore-labs/scopeguard/actions/workflows/github-code-scanning/codeql/badge.svg?branch=main)](https://github.com/fillmore-labs/scopeguard/actions/workflows/github-code-scanning/codeql)
-[![Coverage](https://codecov.io/gh/fillmore-labs/scopeguard/branch/main/graph/badge.svg?token=D7ZKQQKAIG)](https://codecov.io/gh/fillmore-labs/scopeguard)
+[![Test](https://github.com/fillmore-labs/scopeguard/actions/workflows/test.yml/badge.svg?branch=dev)](https://github.com/fillmore-labs/scopeguard/actions/workflows/test.yml)
+[![CodeQL](https://github.com/fillmore-labs/scopeguard/actions/workflows/github-code-scanning/codeql/badge.svg?branch=dev)](https://github.com/fillmore-labs/scopeguard/actions/workflows/github-code-scanning/codeql)
+[![Coverage](https://codecov.io/gh/fillmore-labs/scopeguard/branch/dev/graph/badge.svg?token=D7ZKQQKAIG)](https://codecov.io/gh/fillmore-labs/scopeguard)
 [![Go Report Card](https://goreportcard.com/badge/fillmore-labs.com/scopeguard)](https://goreportcard.com/report/fillmore-labs.com/scopeguard)
-[![Codeberg CI](https://ci.codeberg.org/api/badges/15593/status.svg?branch=main)](https://ci.codeberg.org/repos/15593/branches/main)
+[![Codeberg CI](https://ci.codeberg.org/api/badges/15593/status.svg?branch=dev)](https://ci.codeberg.org/repos/15593/branches/dev)
 [![License](https://img.shields.io/github/license/fillmore-labs/scopeguard)](https://www.apache.org/licenses/LICENSE-2.0)
 
 A Go static analyzer that identifies variables declared with unnecessarily wide scope and suggests moving them into
@@ -13,13 +13,12 @@ tighter scopes, following Go’s idiomatic scoping patterns.
 
 ## Why Narrow Scope Matters
 
-Have you ever scrolled through a long function to find where a variable was last modified, only to discover its
-declaration 200 lines earlier? Wide variable scopes add cognitive overhead, make refactoring harder, and can introduce
-bugs.
+Have you ever scrolled through a long function to find where a variable was last used, only to discover its declaration
+200 lines earlier? Wide variable scopes add cognitive overhead, make refactoring harder, and can introduce bugs.
 
-Go encourages narrow scoping — from the `:=` operator to initialization statements in control structures. ScopeGuard
-helps you follow these best practices by detecting opportunities to tighten variable scope so you can write more
-idiomatic Go.
+Go encourages narrow scoping — including the `:=` operator and initialization statements in control structures.
+ScopeGuard helps you follow these best practices by detecting opportunities to tighten variable scope so you can write
+more idiomatic Go.
 
 ### Examples
 
@@ -152,7 +151,7 @@ scopeguard -fix ./...
 
 > [!TIP]
 >
-> For a safer initial run, use `-conservative` with `-fix`. This only applies the changes that don't cross other
+> For a safer initial run, use `-conservative` with `-fix`. This applies only those changes that do not cross other
 > statements:
 >
 > ```shell
@@ -177,12 +176,12 @@ scopeguard -scope=false ./...
 #### Shadowing Detection
 
 Variable shadowing occurs when a variable declared in an inner scope has the same name as a variable in an outer scope.
-This can lead to subtle bugs where you accidentally use the wrong variable. The standard `shadow` tool is expected to
-[be deprecated](https://go.dev/issue/75342). Since shadowing is closely related to scope reduction, ScopeGuard includes
-shadow detection.
+This can lead to subtle bugs where you accidentally use the wrong variable. The standard `shadow` tool is expected
+[to be deprecated](https://go.dev/issue/75342). Since shadowing is closely related to scope, ScopeGuard includes shadow
+detection.
 
-By default, ScopeGuard flags variables that are **used after** being shadowed in an inner scope. While this is legal Go,
-it can be difficult to understand:
+By default, ScopeGuard reports variables **used after** being shadowed in an inner scope. While this is legal Go, it can
+be difficult to understand:
 
 ```go
 func example() error {
@@ -198,7 +197,7 @@ func example() error {
 
 Control this behavior with the `-shadow` flag:
 
-- `true` (default): Flag variables that are used after being shadowed in an inner scope.
+- `true` (default): Report variables that are used after being shadowed in an inner scope.
 - `false`: Disables shadowing diagnostics.
 
 ```shell
@@ -209,13 +208,13 @@ Note that this feature checks for existing shadowing issues and is independent o
 analysis will never suggest moving a variable into an inner scope if it is used after that block, preventing this class
 of bugs by design.
 
-#### Renaming Shadowed Variables (Experimental)
+#### Renaming Shadowed Variables
 
-When a variable is used after being shadowed, it can indicate a bug. You can automatically rename shadowed variables to
-resolve this:
+When a variable is used after being shadowed, it can indicate a bug. When you run with `-fix`, ScopeGuard automatically
+renames shadowed variables to resolve this:
 
 ```shell
-scopeguard -fix -rename ./...
+scopeguard -fix ./...
 ```
 
 ```go
@@ -243,7 +242,7 @@ func transform(x int) int {
 }
 ```
 
-The `-rename` flag appends a suffix (e.g., `_1`, `_2`) to the outer variable to make it unique:
+The fix appends a suffix (e.g., `_1`, `_2`) to the outer variable to make it unique:
 
 ```go
 func transform(x_2 int) int {
@@ -273,37 +272,37 @@ func transform(x_2 int) int {
 These generic suffixes (`_1`, `_2`) serve as placeholders that don't convey meaning. During code review, replace them
 with descriptive names that reflect each variable's purpose and scope.
 
+Alternatively, you might choose to give the inner variable a non-standard name instead. Note that variables with wider
+scope traditionally warrant longer, more descriptive names.
+
+This feature is safe and won't break your code — it only renames variables that are shadowed, meaning they _already_
+have different scopes and renaming doesn't change program semantics.
+
+This behavior is enabled by default when using `-fix`. To disable automatic renaming, use `-rename=false`.
+
+```shell
+scopeguard -rename=false ./...
+```
+
 > [!NOTE]
 >
-> In functions where variables are renamed, no other fixes are applied. Run `scopeguard -fix` again to apply them.
+> Variable renaming is skipped in functions where scope-narrowing fixes are applied during the same run. Run
+> `scopeguard -fix` again to rename variables.
 
 > [!TIP]
 >
 > For a completely safe renaming operation that performs no scope-related transformations:
 >
 > ```shell
-> scopeguard -scope=false -rename -fix ./...
+> scopeguard -scope=false -fix ./...
 > ```
 >
 > This renames shadowed variables only, without moving any declarations.
 
-##### Why is this experimental?
-
-This feature is safe and won't break your code — it only renames variables that are shadowed, meaning they _already_
-have different scopes and the renaming doesn't change program semantics.
-
-The “experimental” label refers to open design questions, not safety concerns:
-
-1. It's unclear whether using generic suffixes like `_1`, `_2` is helpful in practice. Feedback from real-world projects
-   will help determine whether this approach is valuable.
-2. It's unclear whether the outer or inner variable should be renamed. While the outer variable has a wider scope and
-   should arguably have a longer name, the inner variable is sometimes only temporary and could benefit from a
-   non-standard name.
-
 #### Nested Assignments
 
-Modifying a variable within its own assignment statement (a nested assignment) is hard to read and error-prone during
-refactoring. This pattern can introduce subtle bugs when code is parallelized or restructured:
+Modifying a variable inside a closure that is part of its own assignment statement is hard to read and error-prone
+during refactoring. This pattern can introduce subtle bugs when code is parallelized or restructured:
 
 ```go
 func example() (string, error) {
@@ -343,7 +342,7 @@ func example() (string, error) {
 
 Control this behavior with the `-nested-assign` flag:
 
-- `true` (default): Flag nested assignments where a variable is modified within its own assignment expression.
+- `true` (default): Report nested assignments where a variable is modified within its own assignment expression.
 - `false`: Disables diagnostics.
 
 ```shell
@@ -361,7 +360,7 @@ ScopeGuard can combine them into a single parallel assignment. This reduces nest
 got := f(x)
 want := "result"
 if got != want {
-	t.Errorf("expected %q, got %q", want, got)
+	t.Errorf("got %q, expected %q", got, want)
 }
 ```
 
@@ -369,7 +368,7 @@ if got != want {
 
 ```go
 if got, want := f(x), "result"; got != want {
-	t.Errorf("expected %q, got %q", want, got)
+	t.Errorf("got %q, expected %q", got, want)
 }
 ```
 
@@ -398,8 +397,8 @@ scopeguard -fix -combine=false ./...
   ```
 
 - **Declaration Length Limit:** Only move declarations up to N lines long into control flow initializers. This prevents
-  moving large multi-line declarations (like function literals), which could make them harder to read (default:
-  unlimited):
+  moving large multi-line declarations (like function literals), which could make them harder to read (default: no
+  limit):
 
   ```shell
   scopeguard -max-lines 10 ./...
@@ -443,7 +442,7 @@ if !called {
 }
 
 if got != want {
-	t.Errorf("expected %q, got %q", want, got)
+	t.Errorf("got %q, expected %q", got, want)
 }
 ```
 
@@ -457,11 +456,11 @@ if !called {
 }
 
 if got, want := f(), "test"; got != want {
-	t.Errorf("expected %q, got %q", want, got)
+	t.Errorf("got %q, expected %q", got, want)
 }
 ```
 
-The call to `f()` is moved after the check for `called`, causing the test to fail.
+The call to `f()` is moved _after_ the check for `called`, causing the test to fail.
 
 To fix this, either:
 
@@ -483,7 +482,7 @@ got, want := s[i], byte('b')
 i++
 
 if got != want {
-	t.Errorf("expected %q, got %q", want, got)
+	t.Errorf("got %q, expected %q", got, want)
 }
 ```
 
@@ -551,7 +550,7 @@ if px, x := &x, 2; x == 2 {
 }
 ```
 
-Which prints `1`.
+This prints `1`.
 
 Use `//nolint:scopeguard` at the declaration to suppress this transformation, or better yet, avoid such a complex
 aliasing in declarations.
@@ -578,7 +577,7 @@ destination: .
 plugins:
   - module: fillmore-labs.com/scopeguard
     import: fillmore-labs.com/scopeguard/gclplugin
-    version: v0.0.4
+    version: v0.0.5
 ```
 
 Then run `golangci-lint custom` from your project root. This produces a custom `golangci-lint` executable that can be
@@ -602,6 +601,7 @@ linters:
           shadow: true
           nested-assign: true
           conservative: false
+          rename: true
           combine: true
           max-lines: 10
 ```
@@ -627,6 +627,8 @@ See also the `golangci-lint`
 - [`noinlineerr`](https://github.com/AlwxSin/noinlineerr): Linter that prefers wider variable scope (the opposite
   philosophy).
 - [`ineffassign`](https://github.com/gordonklaus/ineffassign): Detects ineffectual assignments.
+- [`shadow`](https://github.com/microsoft/typescript-go/blob/4fcbc64de3069390bf4e87f735b489c0fbc1fec1/_tools/customlint/shadow.go):
+  Custom linter by [Jake Bailey](https://jakebailey.dev/posts/go-shadowing/) for Microsoft TypeScript.
 
 ## Links
 

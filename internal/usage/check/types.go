@@ -18,6 +18,7 @@ package check
 
 import (
 	"go/ast"
+	"go/token"
 	"go/types"
 
 	"fillmore-labs.com/scopeguard/internal/astutil"
@@ -26,7 +27,8 @@ import (
 // ShadowUse contains information about a variable use after previously shadowed.
 type ShadowUse struct {
 	Var       *types.Var
-	Use, Decl astutil.NodeIndex
+	ShadowPos token.Pos
+	Use       astutil.NodeIndex
 }
 
 // NestedAssign contains information about a nested variable assign.

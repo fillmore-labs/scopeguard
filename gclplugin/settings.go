@@ -52,8 +52,8 @@ func (s Settings) Options() []scopeguard.Option {
 	return opts
 }
 
-// appendOption appends a non-nil setting to a [scopeguard.Option] list.
-func appendOption[T any](opts []scopeguard.Option, value *T, constructor func(T) scopeguard.Option) []scopeguard.Option {
+// appendOption appends a non-nil setting to an option list.
+func appendOption[T, O any](opts []O, value *T, constructor func(T) O) []O {
 	if value == nil {
 		return opts
 	}

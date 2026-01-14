@@ -32,7 +32,7 @@ import (
 	"fillmore-labs.com/scopeguard/internal/target"
 )
 
-var rawcfg = &printer.Config{Mode: printer.RawFormat}
+var rawfmt = &printer.Config{Mode: printer.RawFormat}
 
 // createEdits creates a suggested fix to move a variable declaration to a tighter scope.
 func createEdits(p *analysis.Pass, in *inspector.Inspector, move target.MoveTarget) []analysis.TextEdit {
@@ -75,7 +75,7 @@ func createEdits(p *analysis.Pass, in *inspector.Inspector, move target.MoveTarg
 		err = fprintDecl(&buf, p.Fset, stmt, move.Unused)
 
 	default:
-		err = rawcfg.Fprint(&buf, p.Fset, stmt)
+		err = rawfmt.Fprint(&buf, p.Fset, stmt)
 	}
 
 	if err != nil {
@@ -140,8 +140,8 @@ func removeUnused(stmt ast.Node, unused []string) []analysis.TextEdit {
 }
 
 // removeUnusedAssign handles removal of unused variables from assignment statements (:= and =).
-func removeUnusedAssign(n *ast.AssignStmt, unused []string) []analysis.TextEdit {
-	if n.Tok != token.DEFINE && n.Tok != token.ASSIGN {
+func removeUnusedAssign(stmt *ast.AssignStmt, unused []string) []analysis.TextEdit {
+	if stmt.Tok != token.DEFINE && stmt.Tok != token.ASSIGN {
 		return nil
 	}
 
@@ -150,12 +150,7 @@ func removeUnusedAssign(n *ast.AssignStmt, unused []string) []analysis.TextEdit 
 	underscore := []byte("_")
 	all := true
 
-	for _, expr := range n.Lhs {
-		id, ok := expr.(*ast.Ident)
-		if !ok || id.Name == "_" {
-			continue // blank identifier
-		}
-
+	for id := range astutil.AllAssigned(stmt) {
 		if !slices.Contains(unused, id.Name) {
 			all = false
 			continue
@@ -164,9 +159,9 @@ func removeUnusedAssign(n *ast.AssignStmt, unused []string) []analysis.TextEdit 
 		edits = append(edits, analysis.TextEdit{Pos: id.Pos(), End: id.End(), NewText: underscore})
 	}
 
-	if all && n.Tok == token.DEFINE {
+	if all && stmt.Tok == token.DEFINE {
 		// Change `:=` to `=` when all identifiers are removed
-		edits = append(edits, analysis.TextEdit{Pos: n.TokPos, End: n.TokPos + 1})
+		edits = append(edits, analysis.TextEdit{Pos: stmt.TokPos, End: stmt.TokPos + 1})
 	}
 
 	return edits
@@ -334,7 +329,7 @@ func fprintAssign(buf *bytes.Buffer, in *inspector.Inspector, fset *token.FileSe
 	// If we are not moving to Init (which might require wrapping composite literals) AND we have no other decls to combine,
 	// we can use the statement as is.
 	if stmt.Tok != token.DEFINE || (!moveToInit && len(move.Unused) == 0 && len(move.AbsorbedDecls) == 0) {
-		return nil, rawcfg.Fprint(buf, fset, stmt)
+		return nil, rawfmt.Fprint(buf, fset, stmt)
 	}
 
 	// We handle composite literal wrapping for the RHS if moving to Init
@@ -346,13 +341,7 @@ func fprintAssign(buf *bytes.Buffer, in *inspector.Inspector, fset *token.FileSe
 	// Start with the initial statement's LHS and RHS
 	var lhs []ast.Expr
 
-	for _, expr := range stmt.Lhs {
-		if id, ok := expr.(*ast.Ident); ok && slices.Contains(move.Unused, id.Name) {
-			expr = &ast.Ident{NamePos: id.NamePos, Name: "_"}
-		}
-
-		lhs = append(lhs, expr)
-	}
+	lhs = appendFilteredLHS(lhs, stmt, move.Unused)
 
 	rhs := slices.Clone(stmt.Rhs)
 
@@ -376,13 +365,7 @@ func fprintAssign(buf *bytes.Buffer, in *inspector.Inspector, fset *token.FileSe
 		}
 
 		// Append LHS and RHS
-		for _, expr := range otherAssign.Lhs {
-			if id, ok := expr.(*ast.Ident); ok && slices.Contains(otherDecl.Unused, id.Name) {
-				expr = &ast.Ident{NamePos: id.NamePos, Name: "_"}
-			}
-
-			lhs = append(lhs, expr)
-		}
+		lhs = appendFilteredLHS(lhs, otherAssign, otherDecl.Unused)
 
 		rhs = append(rhs, otherAssign.Rhs...)
 	}
@@ -403,6 +386,22 @@ func fprintAssign(buf *bytes.Buffer, in *inspector.Inspector, fset *token.FileSe
 	return extraRemovals, nil
 }
 
+// appendFilteredLHS appends filtered left-hand side expressions from an assignment statement into the provided slice.
+// It replaces identifiers from the LHS that match any in the unused slice with an underscore ('_').
+func appendFilteredLHS(lhs []ast.Expr, stmt *ast.AssignStmt, unused []string) []ast.Expr {
+	lhs = slices.Grow(lhs, len(stmt.Lhs))
+
+	for _, expr := range stmt.Lhs {
+		if id, ok := expr.(*ast.Ident); ok && slices.Contains(unused, id.Name) {
+			expr = &ast.Ident{NamePos: id.NamePos, Name: "_"}
+		}
+
+		lhs = append(lhs, expr)
+	}
+
+	return lhs
+}
+
 // fprintAssignLHS prints the left-hand side of an assignment, replacing unused variables with '_'.
 func fprintAssignLHS(buf *bytes.Buffer, fset *token.FileSet, lhs []ast.Expr, unused []string) error {
 	for i, expr := range lhs {
@@ -415,7 +414,7 @@ func fprintAssignLHS(buf *bytes.Buffer, fset *token.FileSet, lhs []ast.Expr, unu
 			expr = &ast.Ident{NamePos: id.NamePos, Name: "_"}
 		}
 
-		if err := rawcfg.Fprint(buf, fset, expr); err != nil {
+		if err := rawfmt.Fprint(buf, fset, expr); err != nil {
 			return err
 		}
 	}
@@ -434,7 +433,7 @@ func fprintAssignRHS(buf *bytes.Buffer, fset *token.FileSet, rhs []ast.Expr, cls
 			expr = &ast.ParenExpr{Lparen: expr.Pos(), X: expr, Rparen: expr.End()}
 		}
 
-		if err := rawcfg.Fprint(buf, fset, expr); err != nil {
+		if err := rawfmt.Fprint(buf, fset, expr); err != nil {
 			return err
 		}
 	}
@@ -445,12 +444,12 @@ func fprintAssignRHS(buf *bytes.Buffer, fset *token.FileSet, rhs []ast.Expr, cls
 // fprintDecl prints a declaration statement, filtering out unused value specs.
 func fprintDecl(buf *bytes.Buffer, fset *token.FileSet, stmt *ast.DeclStmt, unused []string) error {
 	if len(unused) == 0 {
-		return rawcfg.Fprint(buf, fset, stmt)
+		return rawfmt.Fprint(buf, fset, stmt)
 	}
 
 	decl, ok := stmt.Decl.(*ast.GenDecl)
 	if !ok || decl.Tok != token.VAR {
-		return rawcfg.Fprint(buf, fset, stmt)
+		return rawfmt.Fprint(buf, fset, stmt)
 	}
 
 	specs := make([]ast.Spec, 0, len(decl.Specs))
@@ -504,7 +503,7 @@ func fprintDecl(buf *bytes.Buffer, fset *token.FileSet, stmt *ast.DeclStmt, unus
 		},
 	}
 
-	return rawcfg.Fprint(buf, fset, stmt)
+	return rawfmt.Fprint(buf, fset, stmt)
 }
 
 // compositeLits identifies which RHS expressions in an assignment contain [composite literals] that need parenthesization:

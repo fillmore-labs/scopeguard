@@ -29,62 +29,43 @@ func (c *collector) handleShortDecl(stmt *ast.AssignStmt, decl astutil.NodeIndex
 	// The scope of a variable identifier declared inside a function begins at the end of the ShortVarDecl.
 	assignmentDone := stmt.End()
 
-	var vars []assignedVar
-
 	// For each identifier on the LHS
-	for idx, id := range stmt.Lhs {
-		id, ok := id.(*ast.Ident)
+	for idx, expr := range stmt.Lhs {
+		id, ok := expr.(*ast.Ident)
 		if !ok || id.Name == "_" {
 			continue
 		}
 
-		if def, ok := c.TypesInfo.Defs[id]; ok {
-			if def == nil {
-				continue // Symbolic variable in type switch (e.g., switch x := y.(type))
-			}
-
-			// Record a new variable definition
-			c.recordDeclaration(decl, assignmentDone, id, def)
-
+		// Check for a new declaration
+		if _, ok := c.recordDeclaration(id, decl, assignmentDone); ok {
+			// Recorded a new variable definition
 			continue
 		}
 
-		if use, ok := c.TypesInfo.Uses[id]; ok {
-			v, ok := use.(*types.Var)
-			if !ok {
-				continue
-			}
-
-			vars = append(vars, assignedVar{v, id})
-
-			// Record reassignment of an existing variable
-			flags := usageFlagsFromAssignedType(v, assignedType(c.TypesInfo, stmt, idx))
-			c.recordReassignment(decl, assignmentDone, id, v, flags)
-
+		// Otherwise, it must be a reassignment of an existing variable
+		v, ok := c.TypesInfo.Uses[id].(*types.Var)
+		if !ok {
+			astutil.InternalError(c.Pass, id, "Unknown declaration for variable %s", id.Name)
 			continue
 		}
 
-		astutil.InternalError(c.Pass, id, "Unknown declaration for variable %s", id.Name)
+		declarations := c.declarations[v]
+		if len(declarations) == 0 {
+			astutil.InternalError(c.Pass, expr, "Untracked redeclaration of %s", id.Name)
+
+			// If the declaration is not tracked, create a placeholder entry.
+			declarations = []DeclarationNode{{Decl: astutil.InvalidNode, Usage: UsageUsed}}
+		}
+
+		flags := usageFlagsFromAssignedType(v, assignedType(c.TypesInfo, stmt, idx))
+		c.declarations[v] = append(declarations, DeclarationNode{Decl: decl, Usage: flags})
+
+		c.current[v] = declUsage{start: assignmentDone, ignore: id.NamePos}
+
+		c.UpdateShadows(v, id, assignmentDone)
+
+		c.TrackNestedAssignment(v, id, assignmentDone, decl)
 	}
-
-	c.trackVars(vars, assignmentDone, decl)
-}
-
-// recordReassignment records a reassignment of an existing variable.
-func (c *collector) recordReassignment(decl astutil.NodeIndex, assignmentDone token.Pos, id *ast.Ident, v *types.Var, flags Flags) {
-	usage := NodeUsage{Decl: decl, Usage: flags}
-
-	if usages := c.usages[v]; len(usages) > 0 {
-		c.usages[v] = append(usages, usage)
-	} else {
-		// If the variable was declared and is not tracked (e.g., function parameters),
-		// create a placeholder entry to indicate external declaration.
-		c.usages[v] = []NodeUsage{{Decl: astutil.InvalidNode, Usage: UsageUsed}, usage}
-	}
-
-	c.current[v] = declUsage{start: assignmentDone, ignore: id.NamePos}
-
-	c.RecordAssignment(v, id, assignmentDone)
 }
 
 func usageFlagsFromAssignedType(v *types.Var, assignedType types.Type) Flags {
@@ -122,7 +103,7 @@ func assignedType(info *types.Info, stmt *ast.AssignStmt, idx int) types.Type {
 			case token.IMAG:
 				return types.Typ[types.Complex128]
 			case token.CHAR:
-				return universeRune.Type()
+				return universeRune
 			case token.STRING:
 				return types.Typ[types.String]
 			}
@@ -145,4 +126,4 @@ func assignedType(info *types.Info, stmt *ast.AssignStmt, idx int) types.Type {
 }
 
 // universeRune is the object for the predeclared "rune" type.
-var universeRune = types.Universe.Lookup("rune")
+var universeRune = types.Universe.Lookup("rune").Type()

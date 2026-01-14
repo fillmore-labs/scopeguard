@@ -72,9 +72,11 @@ linters:
     # keep-sorted start
     errcheck:
       exclude-functions:
-        - (io/fs.File).Close
         - (*os.File).Close
+        - (io/fs.File).Close
         - (*github.com/goccy/go-yaml.Encoder).Close
+        - go/ast.Fprint
+        - go/format.Node
       verbose: true
     goheader:
       values:
@@ -102,6 +104,13 @@ linters:
       enable-all: true
       disable:
         - fieldalignment
+    gosec:
+      config:
+        G104:
+          ast:
+            - Fprint
+          format:
+            - Node
     nlreturn:
       block-size: 2
     predeclared:

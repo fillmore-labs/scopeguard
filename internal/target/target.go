@@ -64,10 +64,10 @@ func (ts Stage) SelectTargets(ctx context.Context, cf astutil.CurrentFile, body 
 	cm := ts.CollectMoveCandidates(body, cf, usageData.AllScopeRanges())
 
 	// Block moves that would change variable types
-	cm.BlockMovesWithTypeChanges(usageData.AllUsages(), ts.Conservative)
+	cm.BlockMovesWithTypeChanges(usageData.AllDeclarations(), ts.Conservative)
 
 	// Calculate unused identifiers and block moves that would lose necessary type information
-	unused := cm.BlockMovesLosingTypeInfo(usageData.AllUsages())
+	unused := cm.BlockMovesLosingTypeInfo(usageData.AllDeclarations())
 
 	// Resolve Init field conflicts (possibly by combining them)
 	cm.ResolveInitFieldConflicts(in, ts.Combine)
@@ -78,7 +78,7 @@ func (ts Stage) SelectTargets(ctx context.Context, cf astutil.CurrentFile, body 
 	}
 
 	// Find declarations that become orphaned after other moves
-	orphanedDeclarations := cm.OrphanedDeclarations(usageData.AllUsages())
+	orphanedDeclarations := cm.OrphanedDeclarations(usageData.AllDeclarations())
 
 	// Convert candidates to the final sorted result
 	return cm.SortedMoveTargets(unused, orphanedDeclarations)
@@ -163,15 +163,15 @@ func (ts Stage) analyzeCandidate(in *inspector.Inspector, cf astutil.CurrentFile
 }
 
 // declInfo extracts assigned identifiers and whether the move is restricted to block statements only.
-func declInfo(declNode ast.Node, cf astutil.CurrentFile, maxLines int) (identifiers iter.Seq[string], onlyBlock bool) {
+func declInfo(declNode ast.Node, cf astutil.CurrentFile, maxLines int) (identifiers iter.Seq[*ast.Ident], onlyBlock bool) {
 	switch n := declNode.(type) {
 	case *ast.AssignStmt:
 		// Short declarations can go to init fields if they're small enough
-		return astutil.AllAssignedNames(n), maxLines > 0 && cf.Lines(declNode) > maxLines
+		return astutil.AllAssigned(n), maxLines > 0 && cf.Lines(declNode) > maxLines
 
 	case *ast.DeclStmt:
 		// var declarations can only go to block statements (not init fields)
-		return astutil.AllDeclaredNames(n), true
+		return astutil.AllDeclared(n), true
 
 	default:
 		// Unsupported declaration type

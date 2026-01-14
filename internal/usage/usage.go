@@ -43,18 +43,16 @@ type Stage struct {
 func (us Stage) TrackUsage(ctx context.Context, body inspector.Cursor, f *ast.FuncDecl) (Result, Diagnostics) {
 	defer trace.StartRegion(ctx, "Usage").End()
 
-	uc := us.newUsageCollector()
+	c := us.newUsageCollector()
 
-	uc.handleFunc(body, f.Recv, f.Type)
-	uc.inspectBody(body, f.Type.Results)
+	c.handleFunc(body, f.Recv, f.Type)
 
-	return uc.result()
+	return c.result()
 }
 
 // newUsageCollector creates a new usage collector for analyzing a function body.
 func (us Stage) newUsageCollector() collector {
 	var scopeRanges map[astutil.NodeIndex]ScopeRange
-
 	if us.Analyzers.Enabled(config.ScopeAnalyzer) {
 		scopeRanges = make(map[astutil.NodeIndex]ScopeRange)
 	}
@@ -66,6 +64,6 @@ func (us Stage) newUsageCollector() collector {
 		NestedChecker: check.NewNestedChecker(us.Analyzers.Enabled(config.NestedAssignAnalyzer)),
 		scopeRanges:   scopeRanges,
 		current:       make(map[*types.Var]declUsage),
-		usages:        make(map[*types.Var][]NodeUsage),
+		declarations:  make(map[*types.Var][]DeclarationNode),
 	}
 }

@@ -60,10 +60,10 @@ func TestSafetyCheck(t *testing.T) {
 			_, info := testsource.Check(t, fset, f)
 
 			decl, declScope, targetScope := prepareScopes(t, info, body, targetName)
-			identifiers := slices.Values([]string{targetName})
+			identifiers := slices.Values([]*ast.Ident{{Name: targetName}})
 
 			if got, want := SafetyCheck(info, decl, declScope, targetScope, identifiers), tt.want; got != want {
-				t.Errorf("Expected safety check %q, got %q", want, got)
+				t.Errorf("Got safety check %q, expected %q", got, want)
 			}
 		})
 	}

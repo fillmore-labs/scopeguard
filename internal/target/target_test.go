@@ -99,7 +99,7 @@ func TestTargets(t *testing.T) {
 				Pkg:       pkg,
 			}
 
-			scopes := scope.NewIndex(info.Scopes)
+			scopes := scope.NewIndex(info)
 
 			us := usage.Stage{
 				Pass:       p,
@@ -120,7 +120,7 @@ func TestTargets(t *testing.T) {
 			cm := ts.CollectMoveCandidates(body, currentFile, usageData.AllScopeRanges())
 
 			// when
-			unused := cm.BlockMovesLosingTypeInfo(usageData.AllUsages())
+			unused := cm.BlockMovesLosingTypeInfo(usageData.AllDeclarations())
 
 			// then
 			mt := cm.SortedMoveTargets(unused, nil)
@@ -132,16 +132,16 @@ func TestTargets(t *testing.T) {
 			idx := slices.IndexFunc(mt, expectedStatus)
 			if idx < 0 {
 				if len(mt) > 0 {
-					t.Errorf("Expected status %q, got %q", tt.status, mt[0].Status)
+					t.Errorf("Got status %q, expected %q", mt[0].Status, tt.status)
 				} else {
-					t.Errorf("Expected status %q, got none", tt.status)
+					t.Errorf("Got no status, expected %q", tt.status)
 				}
 
 				return
 			}
 
 			if got, want := len(mt[idx].Unused), tt.unused; got != want {
-				t.Errorf("Expected %d unused variables, got %d", want, got)
+				t.Errorf("Got %d unused variables, expected %d", got, want)
 			}
 		})
 	}

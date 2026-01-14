@@ -22,30 +22,30 @@ import (
 	"iter"
 )
 
-// AllAssignedNames yields all assigned variable names.
-func AllAssignedNames(stmt *ast.AssignStmt) iter.Seq[string] {
-	return func(yield func(string) bool) {
+// AllAssigned yields all assigned identifiers.
+func AllAssigned(stmt *ast.AssignStmt) iter.Seq[*ast.Ident] {
+	return func(yield func(*ast.Ident) bool) {
 		for _, expr := range stmt.Lhs {
 			id, ok := expr.(*ast.Ident)
 			if !ok || id.Name == "_" {
 				continue // blank identifier
 			}
 
-			if !yield(id.Name) {
+			if !yield(id) {
 				return
 			}
 		}
 	}
 }
 
-// AllDeclaredNames yields all declared variable names.
-func AllDeclaredNames(stmt *ast.DeclStmt) iter.Seq[string] {
+// AllDeclared yields all declared identifiers.
+func AllDeclared(stmt *ast.DeclStmt) iter.Seq[*ast.Ident] {
 	decl, ok := stmt.Decl.(*ast.GenDecl)
 	if !ok || decl.Tok != token.VAR {
-		return func(func(string) bool) {}
+		return func(func(*ast.Ident) bool) {}
 	}
 
-	return func(yield func(string) bool) {
+	return func(yield func(*ast.Ident) bool) {
 		for _, spec := range decl.Specs {
 			vspec, ok := spec.(*ast.ValueSpec)
 			if !ok {
@@ -57,7 +57,7 @@ func AllDeclaredNames(stmt *ast.DeclStmt) iter.Seq[string] {
 					continue // blank identifier
 				}
 
-				if !yield(id.Name) {
+				if !yield(id) {
 					return
 				}
 			}

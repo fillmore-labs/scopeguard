@@ -24,7 +24,7 @@ func rename() {
 		x := 2
 		_ = x
 	}
-	_ = x // want "Identifier 'x' used after previously shadowed"
+	_ = x // want "Variable 'x' used after previously shadowed"
 }
 
 func renameAgain() {
@@ -33,7 +33,7 @@ func renameAgain() {
 		x := 2
 		_ = x
 	}
-	_ = x // want "Identifier 'x' used after previously shadowed"
+	_ = x // want "Variable 'x' used after previously shadowed"
 }
 
 func renameNolint() {
@@ -57,16 +57,35 @@ func renameSecond() {
 		x := 2
 		_ = x
 	}
-	_ = x // want "Identifier 'x' used after previously shadowed"
+	_ = x // want "Variable 'x' used after previously shadowed"
 }
 
-func shadowedReturn() (i int) {
-	i, a := -1, true
+func shadowedReturn() {
+	_ = func() (i int) {
+		i, a := -1, true
 
-	if a {
-		i := -i
-		return i
+		if a {
+			i := -i
+			if i < 0 {
+				return i
+			}
+		}
+
+		return // want "Variable 'i' used after previously shadowed"
 	}
+}
 
-	return // want "Identifier 'i' used after previously shadowed"
+func typeSwitch() {
+	var item any
+	switch v := item.(type) {
+	case int:
+		switch v := item.(type) {
+		case int:
+			_ = v
+		}
+		_ = v // want "Variable 'v' used after previously shadowed"
+	default:
+		_ = v
+		return
+	}
 }

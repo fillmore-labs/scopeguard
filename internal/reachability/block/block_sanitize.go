@@ -1,0 +1,70 @@
+// Copyright 2026 Oliver Eikemeier. All Rights Reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+//
+// SPDX-License-Identifier: Apache-2.0
+
+//go:build sanitize
+
+package block
+
+import "go/token"
+
+func (b *Block) update(pos, end token.Pos) {
+	if !b.Pos.IsValid() {
+		panic("block has no start")
+	}
+
+	if b.Pos > pos {
+		panic("wrong start order")
+	}
+
+	if b.End.IsValid() && b.End > end {
+		panic("wrong end order")
+	}
+
+	if b.Successor1 != nil {
+		panic("block already has a successor")
+	}
+
+	b.End = end
+}
+
+// SetStart sets the starting position of the block.
+// Panics if the block's start position is already set.
+func (b *Block) SetStart(pos token.Pos) {
+	if b.Pos.IsValid() {
+		panic("block already has a start")
+	}
+
+	b.Pos = pos
+}
+
+// Link connects this block to a single successor.
+func (b *Block) Link(s *Block) {
+	if b.Successor1 != nil {
+		panic("block already has a successor")
+	}
+
+	b.Successor1 = s
+}
+
+// LinkBranch connects this block to two successors (e.g., for conditional branches).
+// s1 is the primary/true branch, s2 is the secondary/false branch.
+func (b *Block) LinkBranch(s1, s2 *Block) {
+	if b.Successor1 != nil {
+		panic("block already has a successor")
+	}
+
+	b.Successor1, b.Successor2 = s1, s2
+}

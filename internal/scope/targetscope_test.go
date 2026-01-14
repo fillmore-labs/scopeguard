@@ -140,7 +140,7 @@ func TestFindSafeScope(t *testing.T) {
 			fset, f, _, body := testsource.Parse(t, tt.src)
 			_, info := testsource.Check(t, fset, f)
 
-			scopes := NewIndex(info.Scopes)
+			scopes := NewIndex(info)
 
 			declScope, minScope := prepareScopes(t, info, scopes, body)
 

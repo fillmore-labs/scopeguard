@@ -14,7 +14,7 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-package analyzer
+package run
 
 import (
 	"context"
@@ -41,8 +41,8 @@ import (
 // Requires field is not properly set.
 var ErrResultMissing = errors.New("analyzer result missing")
 
-// run executes the scopeguard analyzer's pipeline.
-func (r *runOptions) run(p *analysis.Pass) (any, error) {
+// Run executes the scopeguard analyzer's pipeline.
+func (r *Options) Run(p *analysis.Pass) (any, error) {
 	// Retrieves the [inspector.Inspector] from the pass results.
 	in, ok := p.ResultOf[inspect.Analyzer].(*inspector.Inspector)
 	if !ok {
@@ -55,20 +55,20 @@ func (r *runOptions) run(p *analysis.Pass) (any, error) {
 	defer task.End()
 
 	// Build inverted scope->node map for bidirectional AST/scope navigation
-	scopes := scope.NewIndex(p.TypesInfo.Scopes)
+	scopes := scope.NewIndex(p.TypesInfo)
 
 	us := usage.Stage{
 		Pass:       p,
 		UsageScope: scope.NewUsageScope(scopes),
-		Analyzers:  r.analyzers,
+		Analyzers:  r.Analyzers,
 	}
 
 	ts := target.Stage{
 		Pass:         p,
 		TargetScope:  scope.NewTargetScope(scopes),
-		MaxLines:     r.maxLines,
-		Conservative: r.behavior.Enabled(config.Conservative),
-		Combine:      r.behavior.Enabled(config.CombineDeclarations),
+		MaxLines:     r.MaxLines,
+		Conservative: r.Behavior.Enabled(config.Conservative),
+		Combine:      r.Behavior.Enabled(config.CombineDeclarations),
 	}
 
 	// Remember the current file over all functions declared in it
@@ -85,7 +85,7 @@ func (r *runOptions) run(p *analysis.Pass) (any, error) {
 		switch node := i.Node().(type) {
 		case *ast.File:
 			currentFile = astutil.NewCurrentFile(p.Fset, node)
-			descend := r.behavior.Enabled(config.IncludeGenerated) || !currentFile.Generated()
+			descend := r.Behavior.Enabled(config.IncludeGenerated) || !currentFile.Generated()
 
 			return descend
 
@@ -124,7 +124,7 @@ func (r *runOptions) run(p *analysis.Pass) (any, error) {
 			}
 
 			// Stage 3: Generate diagnostics with suggested fixes
-			report.ProcessDiagnostics(ctx, p, currentFile, i, diagnostics, r.behavior)
+			report.ProcessDiagnostics(ctx, p, currentFile, i, diagnostics, r.Behavior)
 
 			return true
 
