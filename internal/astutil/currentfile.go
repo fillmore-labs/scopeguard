@@ -19,6 +19,7 @@ package astutil
 import (
 	"go/ast"
 	"go/token"
+	"go/types"
 	"regexp"
 	"slices"
 	"strings"
@@ -66,6 +67,13 @@ func (c CurrentFile) Lines(stmt ast.Node) int {
 	return c.line(stmt.End()) - c.line(stmt.Pos()) + 1
 }
 
+// Version returns the Go version string of the current file.
+//
+// See [types.Info.FileVersions].
+func (c CurrentFile) Version(info *types.Info) string {
+	return info.FileVersions[c.file]
+}
+
 func (c CurrentFile) line(pos token.Pos) int {
 	return c.handle.PositionFor(pos, false).Line
 }
@@ -78,7 +86,7 @@ func (c CurrentFile) NoLintComment(pos token.Pos) bool {
 
 	// find the first comment starting after the declaration
 	i, _ := slices.BinarySearchFunc(c.file.Comments, pos,
-		func(c *ast.CommentGroup, p token.Pos) int { return int(c.Pos() - p) })
+		func(doc *ast.CommentGroup, p token.Pos) int { return int(doc.Pos() - p) })
 	if i >= len(c.file.Comments) {
 		return false
 	}
@@ -94,7 +102,7 @@ func (c CurrentFile) NoLintComment(pos token.Pos) bool {
 
 var nolintPattern = regexp.MustCompile(`^//\s*nolint:([a-zA-Z0-9,_-]+)`)
 
-// CommentHasNoLint checks if the provided comment contains a `//nolint:scopeguard` directive.
+// CommentHasNoLint checks if the provided comment starts with a `//nolint:scopeguard` directive.
 func CommentHasNoLint(comment *ast.Comment) bool {
 	matches := nolintPattern.FindStringSubmatch(comment.Text)
 	if matches == nil {
@@ -109,4 +117,9 @@ func CommentHasNoLint(comment *ast.Comment) bool {
 	}
 
 	return false
+}
+
+// CommentGroupHasNoLint checks if the provided comment group ends with a `//nolint:scopeguard` directive.
+func CommentGroupHasNoLint(doc *ast.CommentGroup) bool {
+	return doc != nil && CommentHasNoLint(doc.List[len(doc.List)-1])
 }

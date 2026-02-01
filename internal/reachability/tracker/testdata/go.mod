@@ -1,6 +1,6 @@
 module test
 
-go 1.24.0
+go 1.25
 
 require (
 	github.com/sirupsen/logrus v1.9.4
@@ -12,5 +12,5 @@ require (
 require (
 	github.com/go-logr/logr v1.4.3 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
-	golang.org/x/sys v0.40.0 // indirect
+	golang.org/x/sys v0.41.0 // indirect
 )

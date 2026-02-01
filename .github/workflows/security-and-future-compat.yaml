@@ -1,0 +1,51 @@
+---
+name: Security & Future Compatibility
+"on":
+  push:
+    branches:
+      - main
+      - dev
+  pull_request:
+    branches:
+      - main
+  schedule:
+    - cron: "15 4 * * 1" # weekly on Mondays, 4:15 AM UTC
+jobs:
+  security-and-future-compat:
+    name: Test and run security checks on Go tip
+    permissions:
+      contents: read
+    runs-on: ubuntu-24.04-arm
+    container:
+      image: golang:tip
+    timeout-minutes: 10
+    env:
+      GOTOOLCHAIN: local
+    steps:
+      - name: ✔ Check out
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - name: 🌱 Environment
+        run: |
+          go env -w GOMODCACHE="$HOME/go/pkg/mod"
+      - name: 📦 Cache Go modules
+        uses: actions/cache@cdf6c1fa76f9f475f3d7449005a359c84ca0f306 # v5.0.3
+        with:
+          path: |
+            ~/go/pkg/mod
+            ~/.cache/go-build
+          key: tip-${{ runner.os }}-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            tip-${{ runner.os }}-
+      - name: 🤖 Vulnerability Scanner
+        run: go run golang.org/x/vuln/cmd/govulncheck@master ./...
+      - name: ⬆️ Update to latest dependency versions
+        run: >
+          find . -name go.mod
+          -execdir go get -u -t ./... \;
+          -execdir go mod tidy \;
+      - name: 🔨 Test
+        run: |-
+          go version
+          go test ./...

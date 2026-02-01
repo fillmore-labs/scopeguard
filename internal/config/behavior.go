@@ -16,34 +16,15 @@
 
 package config
 
-type (
-	// AnalyzerFlags represents specific analyzers.
-	AnalyzerFlags uint8
+// DefaultBehavior returns the default behavior settings.
+func DefaultBehavior() Behavior { return FirstUseOnly | CombineDeclarations | RenameVariables }
 
-	// Config represents configuration options for the analyzers.
-	Config uint8
-
-	// Analyzers is representing a set of enabled or disabled analyzer flags.
-	Analyzers = BitMask[AnalyzerFlags]
-
-	// Behavior is representing a set of configurable binary flags for behavior control.
-	Behavior = BitMask[Config]
-)
-
-const (
-	// ScopeAnalyzer enables scope-based analysis for identifying variable declarations and usage.
-	ScopeAnalyzer AnalyzerFlags = 1 << iota
-
-	// ShadowAnalyzer enables analysis to detect shadowed variable declarations.
-	ShadowAnalyzer
-
-	// NestedAssignAnalyzer enables the analysis of nested assignments.
-	NestedAssignAnalyzer
-)
+// Behavior is representing a set of configurable binary flags for behavior control.
+type Behavior uint8
 
 const (
 	// IncludeGenerated specifies whether to include analysis of generated files.
-	IncludeGenerated Config = 1 << iota
+	IncludeGenerated Behavior = 1 << iota
 
 	// FirstUseOnly specifies whether only the first use of a variable after being shadowed should be reported.
 	FirstUseOnly
@@ -58,12 +39,18 @@ const (
 	RenameVariables
 )
 
-// DefaultAnalyzers returns a BitMask with default analyzers enabled.
-func DefaultAnalyzers() BitMask[AnalyzerFlags] {
-	return BitMask[AnalyzerFlags]{ScopeAnalyzer | ShadowAnalyzer | NestedAssignAnalyzer}
+var _behavior = [...]string{
+	"generated",
+	"first-only",
+	"combine",
+	"conservative",
+	"rename",
 }
 
-// DefaultBehavior returns a BitMask with default behavior settings.
-func DefaultBehavior() BitMask[Config] {
-	return BitMask[Config]{FirstUseOnly | CombineDeclarations | RenameVariables}
-}
+func (b Behavior) String() string { return toString(b, _behavior[:], "none") }
+
+// Set adjusts the bitmask by enabling or disabling the specified option.
+func (b *Behavior) Set(flag Behavior, value bool) { set(b, flag, value) }
+
+// Enabled checks if the specified option is enabled in the current bitmask.
+func (b Behavior) Enabled(flag Behavior) bool { return b&flag != 0 }

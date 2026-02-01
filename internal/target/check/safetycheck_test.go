@@ -56,8 +56,8 @@ func TestSafetyCheck(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			fset, f, _, body := testsource.Parse(t, tt.src)
-			_, info := testsource.Check(t, fset, f)
+			fset, files, _, body := testsource.Parse(t, tt.src)
+			_, info := testsource.Check(t, fset, files)
 
 			decl, declScope, targetScope := prepareScopes(t, info, body, targetName)
 			identifiers := slices.Values([]*ast.Ident{{Name: targetName}})
@@ -83,8 +83,7 @@ func prepareScopes(t *testing.T, info *types.Info, body inspector.Cursor, target
 
 		if def, ok := info.Defs[id]; ok {
 			for d := range n.Enclosing((*ast.AssignStmt)(nil), (*ast.DeclStmt)(nil)) {
-				decl = d
-				declScope = def.Parent()
+				decl, declScope = d, def.Parent()
 
 				break
 			}

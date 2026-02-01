@@ -60,8 +60,8 @@ func TestSettings(t *testing.T) {
 				t.Fatalf("Can't decode settings: %v", err)
 			}
 
-			if got := s.Options(); len(got) != tc.want {
-				t.Errorf("Got %d options: %s, want %d", len(got), scopeguard.Options(got).LogValue(), tc.want)
+			if got := scopeguard.Join(s.Options()...).LogAttr().Value.Resolve(); len(got.Group()) != tc.want {
+				t.Errorf("Got %d options: %s, want %d", len(got.Group()), got, tc.want)
 			}
 		})
 	}

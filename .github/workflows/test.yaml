@@ -20,48 +20,45 @@ jobs:
     timeout-minutes: 10
     strategy:
       matrix:
-        go: ["1.26", "1.25", "1.24"]
+        go: ["1.26", "1.25"]
         include:
           - go: "1.26"
-            go-version: "1.26.0-rc.2"
+            go-version: "1.26.0"
             latest: true
           - go: "1.25"
-            go-version: "1.25.6"
-          - go: "1.24"
-            go-version: "1.24.12"
+            go-version: "1.25.7"
     env:
       GOTOOLCHAIN: local
     steps:
       - name: ✔ Check out
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           persist-credentials: false
       - name: 🐹 Set up Go ${{ matrix.go-version }}
-        uses: actions/setup-go@7a3fe6cf4cb3a834922a1244abfce67bcef6a0c5  # v6.2.0
+        uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417 # v6.3.0
         with:
           go-version: ${{ matrix.go-version }}
           cache-dependency-path: "**/go.sum"
-      - name: 📠 Go Telemetry
-        run: go telemetry on
       - name: 🧸 golangci-lint
-        uses: golangci/golangci-lint-action@1e7e51e771db61008b38414a730f564565cf7c20  # v9.2.0
+        uses: golangci/golangci-lint-action@1e7e51e771db61008b38414a730f564565cf7c20 # v9.2.0
         if: ${{ matrix.latest }}
         with:
-          version: v2.8.0
+          version: v2.10.1
           verify: false
+      - name: ⬇️ Download test packages
+        run: (cd ./internal/reachability/tracker/testdata && go mod download)
       - name: 🔨 Test
-        run: |
-          (cd ./internal/reachability/tracker/testdata && go mod download)
-          go test -coverpkg ./... -coverprofile=cover.out ./...
+        run: go test -coverpkg ./... -coverprofile=cover.out ./...
       - name: 🧑🏻‍💻 codecov
-        uses: codecov/codecov-action@671740ac38dd9b0130fbe1cec585b89eea48d3de  # v5.5.2
+        uses: codecov/codecov-action@671740ac38dd9b0130fbe1cec585b89eea48d3de # v5.5.2
         if: ${{ matrix.latest }}
         with:
           files: ./cover.out
           token: ${{ secrets.CODECOV_TOKEN }}
           slug: fillmore-labs/scopeguard
       - name: 🛜 Dependencies
-        uses: actions/go-dependency-submission@f35d5c9af13ce9cc32f7930b171e315e878f6921  # v2.0.3
+        uses: actions/go-dependency-submission@f35d5c9af13ce9cc32f7930b171e315e878f6921 # v2.0.3
+        continue-on-error: true
         if: ${{ matrix.latest }}
         with:
           go-mod-path: go.mod

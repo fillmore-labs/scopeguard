@@ -104,7 +104,9 @@ func (c *collector) handleCaseClause(clause *ast.CaseClause, decl astutil.NodeIn
 
 	c.markNonMovable(v, decl)
 
-	if clause.List != nil {
+	// switch x := x.(type) {} is common, and x has a different type only when
+	// the case lists exactly one type: https://go.dev/ref/spec#Type_switches
+	if len(clause.List) == 1 {
 		c.CheckDeclarationShadowing(c.UsageScope, v, clause.Colon)
 	}
 }

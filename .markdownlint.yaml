@@ -4,11 +4,12 @@ no-hard-tabs:
     - go
   spaces_per_tab: 4
 line-length:
-  code_blocks: false
   line_length: 120
+  code_blocks: false
+  tables: false
 ol-prefix:
   style: ordered
 no-blanks-blockquote:
   enabled: false
 no-inline-html:
-  allowed_elements: ["details", "summary", "p"]
+  allowed_elements: ["b", "code", "details", "summary", "p"]

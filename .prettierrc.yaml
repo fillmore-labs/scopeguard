@@ -1,5 +1,5 @@
----
 # yaml-language-server: $schema=https://json.schemastore.org/prettierrc.json
+---
 printWidth: 120
 proseWrap: always
 tabWidth: 4

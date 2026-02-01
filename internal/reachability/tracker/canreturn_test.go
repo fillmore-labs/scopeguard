@@ -29,14 +29,14 @@ import (
 	. "fillmore-labs.com/scopeguard/internal/reachability/tracker"
 )
 
-func TestCantReturn(t *testing.T) {
+func TestCanReturn(t *testing.T) {
 	t.Parallel()
 
 	testdata := analysistest.TestData()
 
 	testAnalyzer := &analysis.Analyzer{
-		Name:     "cantreturnanalyzer",
-		Doc:      "test cantreturn",
+		Name:     "canreturnanalyzer",
+		Doc:      "test canreturn",
 		Run:      crrun,
 		Requires: []*analysis.Analyzer{inspect.Analyzer},
 	}
@@ -50,29 +50,10 @@ func crrun(p *analysis.Pass) (any, error) {
 		return nil, fmt.Errorf("result of %s missing", inspect.Analyzer.Name)
 	}
 
-	types, visit := []ast.Node{(*ast.File)(nil), (*ast.ExprStmt)(nil)}, crpass{p}.inspect
-	in.Nodes(types, visit)
-
-	return any(nil), nil
-}
-
-type crpass struct{ *analysis.Pass }
-
-func (p crpass) inspect(n ast.Node, push bool) (proceed bool) {
-	if !push {
-		return true
-	}
-
-	switch n := n.(type) {
-	case *ast.File:
-		if ast.IsGenerated(n) {
-			return false
-		}
-
-	case *ast.ExprStmt:
-		expr, ok := n.X.(*ast.CallExpr)
-		if !ok || !CantReturn(p.TypesInfo, expr) {
-			break
+	for stmt := range inspector.All[*ast.ExprStmt](in) {
+		expr, ok := stmt.X.(*ast.CallExpr)
+		if !ok || CanReturn(p.TypesInfo, expr) {
+			continue
 		}
 
 		p.Report(analysis.Diagnostic{
@@ -82,5 +63,5 @@ func (p crpass) inspect(n ast.Node, push bool) (proceed bool) {
 		})
 	}
 
-	return true
+	return nil, nil
 }

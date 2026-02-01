@@ -23,21 +23,23 @@ import (
 
 // _knownFuncs are functions that do not return.
 var _knownFuncs = map[FuncName]struct{}{
+	{Path: "os", Name: "Exit"}:        {},
+	{Path: "syscall", Name: "Exit"}:   {},
+	{Path: "runtime", Name: "Goexit"}: {},
+
 	{Path: "log", Name: "Fatal"}:   {},
 	{Path: "log", Name: "Fatalf"}:  {},
+	{Path: "log", Name: "Fatalln"}: {},
 	{Path: "log", Name: "Panic"}:   {},
 	{Path: "log", Name: "Panicf"}:  {},
 	{Path: "log", Name: "Panicln"}: {},
 
 	{Path: "log", Receiver: "Logger", Name: "Fatal"}:   {},
 	{Path: "log", Receiver: "Logger", Name: "Fatalf"}:  {},
+	{Path: "log", Receiver: "Logger", Name: "Fatalln"}: {},
 	{Path: "log", Receiver: "Logger", Name: "Panic"}:   {},
 	{Path: "log", Receiver: "Logger", Name: "Panicf"}:  {},
 	{Path: "log", Receiver: "Logger", Name: "Panicln"}: {},
-
-	{Path: "os", Name: "Exit"}:        {},
-	{Path: "syscall", Name: "Exit"}:   {},
-	{Path: "runtime", Name: "Goexit"}: {},
 
 	{Path: "testing", Receiver: "common", Name: "Fatal"}:   {},
 	{Path: "testing", Receiver: "common", Name: "Fatalf"}:  {},
@@ -88,17 +90,17 @@ var _knownFuncs = map[FuncName]struct{}{
 	{Path: "k8s.io/klog/v2", Name: "Fatalln"}:                                 {},
 }
 
-// CantReturn iteratively unwraps an expression to find the underlying function declaration.
-func CantReturn(info *types.Info, n *ast.CallExpr) bool {
+// CanReturn iteratively unwraps an expression to find the underlying function declaration.
+func CanReturn(info *types.Info, n *ast.CallExpr) bool {
 	ex := n.Fun
 
 unwrap:
 	switch e := ex.(type) {
 	case *ast.Ident:
-		return cantReturnFunc(info, e)
+		return canReturnFunc(info, e)
 
 	case *ast.SelectorExpr:
-		return cantReturnFunc(info, e.Sel)
+		return canReturnFunc(info, e.Sel)
 
 	case *ast.IndexExpr: // Generic function instantiation with a type parameter ("myFunc[T]").
 		ex = e.X // Unwrap to the function identifier.
@@ -113,20 +115,20 @@ unwrap:
 		goto unwrap
 
 	default: // Pointer dereference or another function reference.
-		return false
+		return true
 	}
 }
 
-func cantReturnFunc(info *types.Info, id *ast.Ident) bool {
+func canReturnFunc(info *types.Info, id *ast.Ident) bool {
 	use := info.Uses[id]
 	if fun, ok := use.(*types.Func); ok {
 		name := FuncNameOf(fun)
-		_, ok := _knownFuncs[name]
+		_, found := _knownFuncs[name]
 
-		return ok
+		return !found
 	}
 
-	return use == builtinPanic
+	return use != builtinPanic
 }
 
 var builtinPanic = types.Universe.Lookup("panic").(*types.Builtin)

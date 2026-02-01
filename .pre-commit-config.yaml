@@ -1,5 +1,5 @@
----
 # yaml-language-server: $schema=https://json.schemastore.org/pre-commit-config.json
+---
 repos:
   - repo: https://github.com/google/yamlfmt
     rev: v0.21.0
@@ -11,6 +11,6 @@ repos:
     hooks:
       - id: keep-sorted
   - repo: https://github.com/DavidAnson/markdownlint-cli2
-    rev: v0.20.0
+    rev: v0.21.0
     hooks:
       - id: markdownlint-cli2

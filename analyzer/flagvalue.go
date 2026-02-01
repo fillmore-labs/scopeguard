@@ -18,51 +18,43 @@ package analyzer
 
 import "strconv"
 
-type boolValue[F any, B boolFlag[F]] struct {
-	flags B
-	value F
+type flagValue[T ~uint8 | ~uint16 | ~uint32] struct {
+	flags *T
+	value T
 }
 
-type boolFlag[F any] interface {
-	comparable
-	Set(flag F, value bool)
-	Enabled(flag F) bool
+func newFlagValue[T ~uint8 | ~uint16 | ~uint32](flags *T, value T) flagValue[T] {
+	return flagValue[T]{flags: flags, value: value}
 }
 
 // Set implements [flag.Value].
-func (f boolValue[_, B]) Set(s string) error {
+func (f flagValue[_]) Set(s string) error {
 	b, err := parseBool(s)
 	if err != nil {
 		return err
 	}
 
-	f.flags.Set(f.value, b)
+	if b {
+		*f.flags |= f.value
+	} else {
+		*f.flags &^= f.value
+	}
 
 	return nil
 }
 
 // String implements [flag.Value].
-func (f boolValue[_, B]) String() string {
-	var null B
-	if f.flags == null {
-		return "false"
-	}
-
-	return strconv.FormatBool(f.flags.Enabled(f.value))
+func (f flagValue[_]) String() string {
+	return strconv.FormatBool(f.flags != nil && *f.flags&f.value != 0)
 }
 
 // Get implements [flag.Getter].
-func (f boolValue[_, B]) Get() any {
-	var null B
-	if f.flags == null {
-		return false
-	}
-
-	return f.flags.Enabled(f.value)
+func (f flagValue[_]) Get() any {
+	return f.flags != nil && *f.flags&f.value != 0
 }
 
 // IsBoolFlag returns true to indicate that this is a boolean [flag.Value].
-func (f boolValue[_, _]) IsBoolFlag() bool { return true }
+func (f flagValue[_]) IsBoolFlag() bool { return true }
 
 // parseBool returns the boolean value represented by the string.
 func parseBool(str string) (bool, error) {

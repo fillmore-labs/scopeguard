@@ -126,7 +126,7 @@ func inertShortDecl(info *types.Info, stmt *ast.AssignStmt) bool {
 
 	for id := range astutil.AllAssigned(stmt) {
 		// Ensure the identifier defines a new object.
-		// If its not in Defs[id], it means it's a reassignment of an existing variable,
+		// If it's not in Defs[id], it means it's a reassignment of an existing variable,
 		// which is a side effect we must avoid.
 		if _, ok := info.Defs[id]; !ok {
 			return false

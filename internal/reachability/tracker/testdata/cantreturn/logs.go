@@ -75,3 +75,6 @@ func kLog() {
 	klog2.Fatalf("")    // want "Can't return"
 	klog2.Fatalln()     // want "Can't return"
 }
+
+// "github.com/rs/zerolog" is not detectable, since it uses
+// log.Fatal().Msg("")

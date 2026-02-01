@@ -22,7 +22,13 @@ import (
 	"testing"
 
 	. "fillmore-labs.com/scopeguard/analyzer"
-	"fillmore-labs.com/scopeguard/internal/config"
+)
+
+type testFlags uint8
+
+const (
+	flagTest testFlags = 1 << iota
+	noFlags  testFlags = 0
 )
 
 func TestFlagValue(t *testing.T) {
@@ -30,20 +36,20 @@ func TestFlagValue(t *testing.T) {
 
 	tests := []struct {
 		name    string
-		initial config.AnalyzerFlags
+		initial testFlags
 		args    []string
 		want    bool
 	}{
 		{
 			name:    "Enable",
-			initial: config.ShadowAnalyzer,
-			args:    []string{"-scope"},
+			initial: noFlags,
+			args:    []string{"-flag"},
 			want:    true,
 		},
 		{
 			name:    "Disable",
-			initial: config.ScopeAnalyzer,
-			args:    []string{"-scope=false"},
+			initial: flagTest,
+			args:    []string{"-flag=false"},
 			want:    false,
 		},
 	}
@@ -52,14 +58,12 @@ func TestFlagValue(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			var flags config.Analyzers
-			flags.Set(tt.initial, true)
+			flags := tt.initial
 
 			fs := flag.NewFlagSet("test", flag.ContinueOnError)
 
-			const value = config.ScopeAnalyzer
-			fv := NewAnalyzerValue(&flags, value)
-			fs.Var(fv, "scope", "enable scope analyzer")
+			fv := NewFlagValue(&flags, flagTest)
+			fs.Var(fv, "flag", "enable flag")
 
 			if err := fs.Parse(tt.args); err != nil {
 				t.Fatalf("Parse failed: %v", err)
@@ -69,8 +73,8 @@ func TestFlagValue(t *testing.T) {
 				t.Errorf("Flag get = %v, want %v", fv.Get(), tt.want)
 			}
 
-			if flags.Enabled(value) != tt.want {
-				t.Errorf("ScopeAnalyzer enabled = %v, want %v", flags.Enabled(config.ScopeAnalyzer), tt.want)
+			if flags&flagTest != 0 != tt.want {
+				t.Errorf("Flag enabled = %t, want %t", flags&flagTest != 0, tt.want)
 			}
 		})
 	}
@@ -79,17 +83,16 @@ func TestFlagValue(t *testing.T) {
 func TestUsage(t *testing.T) {
 	t.Parallel()
 
-	var flags config.Analyzers
-	flags.Set(config.ScopeAnalyzer, true)
+	flags := flagTest
 
 	fs := flag.NewFlagSet("test", flag.ContinueOnError)
 
-	fv := NewAnalyzerValue(&flags, config.ScopeAnalyzer)
-	fs.Var(fv, "scope", "enable scope analyzer")
+	fv := NewFlagValue(&flags, flagTest)
+	fs.Var(fv, "flag", "enable flag")
 
 	const expectedUsage = `
-  -scope
-    	enable scope analyzer (default true)
+  -flag
+    	enable flag (default true)
 `
 
 	var out strings.Builder

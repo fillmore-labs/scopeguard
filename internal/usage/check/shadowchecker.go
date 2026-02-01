@@ -46,7 +46,7 @@ type ShadowChecker struct {
 
 // NewShadowChecker creates a new ShadowChecker instance.
 //
-// If enabled is false, shadow tracking is disabled and the checker is a no-op that uses minimal memory.
+// If enabled is false, shadow tracking is disabled, and the checker is a no-op that uses minimal memory.
 func NewShadowChecker(enabled, firstUseOnly bool) ShadowChecker {
 	var sc ShadowChecker
 

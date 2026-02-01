@@ -38,7 +38,7 @@ func TestAnalyzer(t *testing.T) {
 		{
 			name:    "Default",
 			dir:     "./a",
-			options: Options{WithGenerated(true), WithMaxLines(5), WithRename(false)},
+			options: Join(WithGenerated(true), WithMaxLines(5), WithRename(false)),
 			fix:     true,
 		},
 		{
@@ -48,7 +48,7 @@ func TestAnalyzer(t *testing.T) {
 		{
 			name:    "Conservative",
 			dir:     "./conservative",
-			options: Options{WithConservative(true), WithCombine(false)},
+			options: Join(WithConservative(true), WithCombine(false)),
 			fix:     true,
 		},
 		{
@@ -60,13 +60,13 @@ func TestAnalyzer(t *testing.T) {
 		{
 			name:    "Shadow",
 			dir:     "./shadow",
-			options: Options{WithConservative(true), WithScope(false), WithNestedAssign(false), WithRename(false)},
+			options: Join(WithConservative(true), WithScope(false), WithNestedAssign(false), WithRename(false)),
 			fix:     true,
 		},
 		{
 			name:    "Rename",
 			dir:     "./rename",
-			options: Options{WithScope(false), WithNestedAssign(false), WithRename(true)},
+			options: Join(WithScope(false), WithNestedAssign(false), WithRename(true)),
 			fix:     true,
 		},
 	}

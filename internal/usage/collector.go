@@ -152,7 +152,7 @@ func (c *collector) handleFunc(ctx context.Context, body inspector.Cursor, recv 
 				c.handleAssignedVars(n.Lhs, n.End(), idx)
 
 			case token.DEFINE:
-				switch kind, _ := i.ParentEdge(); kind {
+				switch i.ParentEdgeKind() {
 				case edge.CommClause_Comm:
 					c.handleReceiveStmt(n, idx)
 					return true

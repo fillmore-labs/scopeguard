@@ -17,7 +17,6 @@
 package target_test
 
 import (
-	"go/ast"
 	"slices"
 	"testing"
 
@@ -89,12 +88,12 @@ func TestTargets(t *testing.T) {
 			t.Parallel()
 
 			// given
-			fset, f, fun, body := testsource.Parse(t, tt.src)
-			pkg, info := testsource.Check(t, fset, f)
+			fset, files, fun, body := testsource.Parse(t, tt.src)
+			pkg, info := testsource.Check(t, fset, files)
 
 			p := &analysis.Pass{
 				Fset:      fset,
-				Files:     []*ast.File{f},
+				Files:     files,
 				TypesInfo: info,
 				Pkg:       pkg,
 			}
@@ -104,11 +103,11 @@ func TestTargets(t *testing.T) {
 			behavior := config.DefaultBehavior()
 			maxlines := -1
 
-			us := usage.New(p, scopes, config.NewBitMask(config.ScopeAnalyzer), behavior)
+			us := usage.New(p, scopes, config.ScopeAnalyzer, behavior)
 
 			ts := New(p, scopes, maxlines, behavior)
 
-			currentFile := astutil.NewCurrentFile(fset, f)
+			currentFile := astutil.NewCurrentFile(fset, files[0])
 
 			usageData, _ := us.TrackUsage(t.Context(), body, fun)
 			cm := ts.CollectMoveCandidates(body, currentFile, usageData.AllScopeRanges())
@@ -121,9 +120,7 @@ func TestTargets(t *testing.T) {
 
 			// For this test setup, we expect at most one move target relevant to the test case
 			// Check if we found *any* target matching our expectation
-			expectedStatus := func(m MoveTarget) bool { return m.Status == tt.status }
-
-			idx := slices.IndexFunc(mt, expectedStatus)
+			idx := slices.IndexFunc(mt, func(m MoveTarget) bool { return m.Status == tt.status })
 			if idx < 0 {
 				if len(mt) > 0 {
 					t.Errorf("Got status %q, expected %q", mt[0].Status, tt.status)
@@ -134,8 +131,9 @@ func TestTargets(t *testing.T) {
 				return
 			}
 
-			if got, want := len(mt[idx].Unused), tt.unused; got != want {
-				t.Errorf("Got %d unused variables, expected %d", got, want)
+			unusedVars := mt[idx].Unused
+			if got, want := len(unusedVars), tt.unused; got != want {
+				t.Errorf("Got %d unused variables (%q), expected %d", got, unusedVars, want)
 			}
 		})
 	}

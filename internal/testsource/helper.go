@@ -47,32 +47,35 @@ const testpkg = "test"
 //   - *ast.File: The parsed AST of the source file.
 //   - *ast.FuncDecl: The function declaration wrapping the source code.
 //   - inspector.Cursor: A cursor positioned at the wrapper function's Body field.
-func Parse(tb testing.TB, src string) (fset *token.FileSet, f *ast.File, fn *ast.FuncDecl, body inspector.Cursor) {
+func Parse(tb testing.TB, src string) (fset *token.FileSet, files []*ast.File, fn *ast.FuncDecl, body inspector.Cursor) {
 	tb.Helper()
 
 	const filename = "test.go"
 
 	fset = token.NewFileSet()
+
 	srcFile := wrapSource(src)
 
-	f, err := parser.ParseFile(fset, filename, srcFile, parser.SkipObjectResolution)
+	file, err := parser.ParseFile(fset, filename, srcFile, parser.SkipObjectResolution)
 	if err != nil {
 		tb.Fatalf("Failed to parse source %q: %v", src, err)
 	}
 
-	fn, body = firstFuncDecl(f)
+	files = []*ast.File{file}
+
+	fn, body = firstFuncDecl(files)
 	if fn == nil {
 		tb.Fatal("Can't find function")
 	}
 
-	return fset, f, fn, body
+	return fset, files, fn, body
 }
 
 // Check performs type checking on the provided AST files.
 // It creates and returns a fully type-checked *types.Package and *types.Info.
 // Use this helper when testing analyzer components that require type information
 // (e.g. for method lookup, type identity, or scope analysis).
-func Check(tb testing.TB, fset *token.FileSet, f *ast.File) (*types.Package, *types.Info) {
+func Check(tb testing.TB, fset *token.FileSet, files []*ast.File) (*types.Package, *types.Info) {
 	tb.Helper()
 
 	info := &types.Info{
@@ -84,7 +87,7 @@ func Check(tb testing.TB, fset *token.FileSet, f *ast.File) (*types.Package, *ty
 
 	conf := types.Config{Importer: importer.Default()}
 
-	pkg, err := conf.Check(testpkg, fset, []*ast.File{f}, info)
+	pkg, err := conf.Check(testpkg, fset, files, info)
 	if err != nil {
 		tb.Fatalf("failed to type Check source: %v", err)
 	}
@@ -109,12 +112,10 @@ func wrapSource(src string) *bytes.Buffer {
 	return &srcFile
 }
 
-func firstFuncDecl(f *ast.File) (fn *ast.FuncDecl, body inspector.Cursor) {
-	root := inspector.New([]*ast.File{f}).Root()
+func firstFuncDecl(files []*ast.File) (fn *ast.FuncDecl, body inspector.Cursor) {
+	root := inspector.New(files).Root()
 	for c := range root.Preorder((*ast.FuncDecl)(nil)) {
-		fn, body = c.Node().(*ast.FuncDecl), c.ChildAt(edge.FuncDecl_Body, -1)
-
-		return fn, body
+		return c.Node().(*ast.FuncDecl), c.ChildAt(edge.FuncDecl_Body, -1)
 	}
 
 	return nil, root

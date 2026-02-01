@@ -63,14 +63,11 @@ func (r *Options) Run(p *analysis.Pass) (any, error) {
 
 	ts := target.New(p, scopes, r.MaxLines, r.Behavior)
 
-	// Remember the current file over all functions declared in it
-	var currentFile astutil.CurrentFile
-
 	// Loop over all files
 	for f := range in.Root().Children() {
 		file := f.Node().(*ast.File)
 
-		currentFile = astutil.NewCurrentFile(p.Fset, file)
+		currentFile := astutil.NewCurrentFile(p.Fset, file)
 		if !currentFile.Valid() {
 			astutil.InternalError(p, file, "File %s without valid info", file.Name.Name)
 
@@ -83,7 +80,7 @@ func (r *Options) Run(p *analysis.Pass) (any, error) {
 		}
 
 		// Skip files with nolint comment
-		if file.Doc != nil && astutil.CommentHasNoLint(file.Doc.List[len(file.Doc.List)-1]) {
+		if astutil.CommentGroupHasNoLint(file.Doc) {
 			continue
 		}
 
@@ -96,7 +93,7 @@ func (r *Options) Run(p *analysis.Pass) (any, error) {
 			}
 
 			// Skip functions with nolint comment
-			if fun.Doc != nil && astutil.CommentHasNoLint(fun.Doc.List[len(fun.Doc.List)-1]) {
+			if astutil.CommentGroupHasNoLint(fun.Doc) {
 				continue
 			}
 

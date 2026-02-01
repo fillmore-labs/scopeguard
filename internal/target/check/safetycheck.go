@@ -64,7 +64,7 @@ func usedIdentifierShadowed(info *types.Info, decl inspector.Cursor, declScope, 
 	// Traverse all identifiers used in the declaration
 	for c := range decl.Preorder((*ast.Ident)(nil)) {
 		// Filter out definitions and field selectors - we only care about identifier uses
-		switch kind, _ := c.ParentEdge(); kind {
+		switch c.ParentEdgeKind() {
 		case edge.AssignStmt_Lhs, // Left-hand side of assignment (definition)
 			edge.Field_Names,      // Struct field names
 			edge.SelectorExpr_Sel, // Right side of dot selector (x.Field)
@@ -77,7 +77,7 @@ func usedIdentifierShadowed(info *types.Info, decl inspector.Cursor, declScope, 
 			continue
 		}
 
-		// Skip if we've already checked this identifier
+		// Skip if we've already checked this name
 		if _, ok := checked[id.Name]; ok {
 			continue
 		}

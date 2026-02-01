@@ -1,11 +1,18 @@
 ---
 version: 2
 updates:
+  # Configuration for Go
   - package-ecosystem: gomod
     directory: /
     schedule:
       interval: monthly
+      # Disable all pull requests
+    open-pull-requests-limit: 0
+
+  # Configuration for GitHub Actions
   - package-ecosystem: github-actions
     directory: /
     schedule:
       interval: monthly
+      # Disable all pull requests
+    open-pull-requests-limit: 0

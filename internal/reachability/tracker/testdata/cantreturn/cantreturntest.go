@@ -14,16 +14,44 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-package cantreturn_test
+package cantreturn
 
 import "testing"
 
 func TestCantReturn(t *testing.T) {
 	t.SkipNow() // want "Can't return"
+
+	t.FailNow() // want "Can't return"
+
+	t.Fail()
+
+	helperCantReturn(t)
 }
 
-func failingHelper(tb testing.TB) {
+func BenchmarkCantReturn(b *testing.B) {
+	b.Skip("...") // want "Can't return"
+
+	b.Fatal("...") // want "Can't return"
+
+	b.Log("...")
+
+	helperCantReturn(b)
+}
+
+func FuzzCantReturn(f *testing.F) {
+	f.Skipf("%s", "...") // want "Can't return"
+
+	f.Fatalf("%s", "...") // want "Can't return"
+
+	f.Logf("...")
+
+	helperCantReturn(f)
+}
+
+func helperCantReturn(tb testing.TB) {
 	tb.Helper()
+
+	tb.SkipNow() // want "Can't return"
 
 	tb.FailNow() // want "Can't return"
 }

@@ -26,9 +26,9 @@ type Tracker struct {
 	info *types.Info // Type information for identifying functions that can't return
 }
 
-// CantReturn determines if the given function call expression represents a function that cannot return.
-func (t *Tracker) CantReturn(n *ast.CallExpr) bool {
-	return CantReturn(t.info, n)
+// CanReturn determines if the given function call expression represents a function that can return.
+func (t *Tracker) CanReturn(n *ast.CallExpr) bool {
+	return CanReturn(t.info, n)
 }
 
 // New creates and returns a new Tracker.

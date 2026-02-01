@@ -11,8 +11,6 @@
 !/.golangci.yaml
 !/.github/
 !/.woodpecker/
-/*.md
-!/README.md
 /cover.out
 /trace.out
 /test.xml

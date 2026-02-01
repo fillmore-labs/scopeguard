@@ -268,3 +268,27 @@ func typeSwitchOk() {
 
 	_ = a
 }
+
+func multiTypeSwitch(err error) {
+	switch err := err.(type) {
+	case error, fmt.GoStringer:
+		_ = err
+
+	case fmt.Stringer:
+		_ = err
+
+	default:
+		_ = err
+	}
+
+	_ = err
+}
+
+func multiTypeSwitch2(err error) {
+	switch err := err.(type) {
+	case error:
+		_ = err
+	}
+
+	_ = err // want "Variable 'err' used after previously shadowed"
+}

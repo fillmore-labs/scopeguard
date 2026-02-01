@@ -16,14 +16,10 @@
 
 package analyzer
 
-import (
-	"flag"
+import "flag"
 
-	"fillmore-labs.com/scopeguard/internal/config"
-)
-
-// NewAnalyzerValue returns a new flag.Value that maps to the specified flag bit.
+// NewFlagValue returns a new flag.Value that maps to the specified flag bit.
 // It is used to export the unexported flagValue type for testing.
-func NewAnalyzerValue(flags *config.Analyzers, value config.AnalyzerFlags) flag.Getter {
-	return boolValue[config.AnalyzerFlags, *config.Analyzers]{flags: flags, value: value}
+func NewFlagValue[T ~uint8 | ~uint16 | ~uint32](flags *T, value T) flag.Getter {
+	return newFlagValue(flags, value)
 }

@@ -77,7 +77,7 @@ func (b *builder) appendStmt(current *block.Block, stmt ast.Stmt, labeled *Label
 	case *ast.ExprStmt:
 		current.AddSimpleStmt(stmt)
 
-		if call, ok := stmt.X.(*ast.CallExpr); ok && b.CantReturn(call) {
+		if call, ok := stmt.X.(*ast.CallExpr); ok && !b.CanReturn(call) {
 			return b.New(stmt.End()) // unreachable after non-returning call
 		}
 

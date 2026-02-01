@@ -15,6 +15,5 @@
 // SPDX-License-Identifier: Apache-2.0
 
 // Package config provides configuration types for the scopeguard analyzer.
-// It defines analyzer flags and behavior options, along with a generic
-// bitmask type for managing binary configuration flags.
+// It defines analyzer flags and behavior options.
 package config

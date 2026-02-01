@@ -188,8 +188,8 @@ func TestIntervalInert(t *testing.T) {
 				t.Skipf("needs minimal version %s", tt.version)
 			}
 
-			fset, f, fun, body := testsource.Parse(t, tt.src)
-			_, info := testsource.Check(t, fset, f)
+			fset, files, fun, body := testsource.Parse(t, tt.src)
+			_, info := testsource.Check(t, fset, files)
 
 			start, end := tt.interval(fun.Body)
 

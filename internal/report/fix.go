@@ -539,7 +539,7 @@ compLits:
 		// Found a composite literal. Walk up the parent chain to check if it's already
 		// safely delimited by parentheses, block braces, or other constructs.
 		for p := c; p.Index() != e.Index(); p = p.Parent() {
-			switch kind, _ := p.ParentEdge(); kind {
+			switch p.ParentEdgeKind() {
 			// Already wrapped
 			case edge.ParenExpr_X,
 				// Inside a block statement, function call or index expression

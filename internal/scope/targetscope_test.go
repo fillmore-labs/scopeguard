@@ -137,8 +137,8 @@ func TestFindSafeScope(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			fset, f, _, body := testsource.Parse(t, tt.src)
-			_, info := testsource.Check(t, fset, f)
+			fset, files, _, body := testsource.Parse(t, tt.src)
+			_, info := testsource.Check(t, fset, files)
 
 			scopes := NewIndex(info)
 

@@ -98,7 +98,6 @@ func (f FuncName) String() string {
 
 	// A method.
 	var sb strings.Builder
-
 	sb.WriteByte('(')
 
 	if f.Path != "" {

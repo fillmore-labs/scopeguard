@@ -39,7 +39,7 @@ type DeclarationNode struct {
 	Usage Flags
 }
 
-// Flags indicates how a variable is used.
+// Flags indicate how a variable is used.
 type Flags uint8
 
 const (

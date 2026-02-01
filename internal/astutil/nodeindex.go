@@ -45,5 +45,5 @@ func (n NodeIndex) Cursor(in *inspector.Inspector) inspector.Cursor {
 
 // Node returns the [ast.Node] corresponding to this index.
 func (n NodeIndex) Node(in *inspector.Inspector) ast.Node {
-	return in.At(int32(n)).Node()
+	return n.Cursor(in).Node()
 }

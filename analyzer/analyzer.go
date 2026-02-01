@@ -36,7 +36,7 @@ const (
 // pre-configured [Analyzer] variable is typically sufficient.
 func New(opts ...Option) *analysis.Analyzer {
 	r := run.DefaultOptions()
-	Options(opts).apply(r)
+	Join(opts...).Apply(r)
 
 	a := &analysis.Analyzer{
 		Name:     name,

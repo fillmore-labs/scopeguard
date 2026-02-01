@@ -30,13 +30,13 @@ func registerFlags(flags *flag.FlagSet, r *run.Options) {
 		flags = flag.CommandLine
 	}
 
-	analyzers := analyzeFlags[config.AnalyzerFlags]{
+	analyzers := analyzeFlags[config.Analyzers]{
 		{config.ScopeAnalyzer, "scope", "scope analysis"},
 		{config.ShadowAnalyzer, "shadow", "shadow analysis"},
 		{config.NestedAssignAnalyzer, "nested-assign", "nested assign analysis"},
 	}
 
-	config := analyzeFlags[config.Config]{
+	behavior := analyzeFlags[config.Behavior]{
 		{config.IncludeGenerated, "generated", "check generated files"},
 		{config.Conservative, "conservative", "only apply conservative moves"},
 		{config.CombineDeclarations, "combine", "combine declaration when moving to initializers"},
@@ -44,17 +44,17 @@ func registerFlags(flags *flag.FlagSet, r *run.Options) {
 	}
 
 	analyzers.register(flags, &r.Analyzers)
-	config.register(flags, &r.Behavior)
+	behavior.register(flags, &r.Behavior)
 	flags.IntVar(&r.MaxLines, "max-lines", r.MaxLines, "maximum declaration lines for moving to initializers")
 }
 
-type analyzeFlags[T ~uint8] []struct {
+type analyzeFlags[T ~uint8 | ~uint16 | ~uint32] []struct {
 	flag        T
 	name, usage string
 }
 
-func (a analyzeFlags[T]) register(flags *flag.FlagSet, b *config.BitMask[T]) {
+func (a analyzeFlags[T]) register(flags *flag.FlagSet, b *T) {
 	for _, f := range a {
-		flags.Var(boolValue[T, *config.BitMask[T]]{b, f.flag}, f.name, f.usage)
+		flags.Var(newFlagValue(b, f.flag), f.name, f.usage)
 	}
 }

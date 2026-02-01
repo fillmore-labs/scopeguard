@@ -24,17 +24,29 @@ import (
 )
 
 func logFatal() {
-	log.Fatal() // want "Can't return"
+	log.Fatal()             // want "Can't return"
+	log.Fatalln("...")      // want "Can't return"
+	log.Fatalf("%s", "...") // want "Can't return"
+
+	log.Panic()             // want "Can't return"
+	log.Panicln("...")      // want "Can't return"
+	log.Panicf("%s", "...") // want "Can't return"
 }
 
 func builtinPanic() {
 	panic("") // want "Can't return"
 }
 
-func logFatalf() {
+func logerFatal() {
 	l := log.Default()
 
-	l.Fatalf("") // want "Can't return"
+	l.Fatal()             // want "Can't return"
+	l.Fatalln("...")      // want "Can't return"
+	l.Fatalf("%s", "...") // want "Can't return"
+
+	l.Panic()             // want "Can't return"
+	l.Panicln("...")      // want "Can't return"
+	l.Panicf("%s", "...") // want "Can't return"
 }
 
 func osExit() {

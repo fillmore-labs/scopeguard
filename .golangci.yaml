@@ -59,6 +59,7 @@ linters:
     - wsl_v5
     # keep-sorted end
     - scopeguard
+    - errortype
   settings:
     custom:
       scopeguard:
@@ -70,12 +71,22 @@ linters:
         settings:
           conservative: true
           max-lines: 10
+      errortype:
+        type: module
+        description: errortype helps prevent subtle bugs in error handling.
+        original-url: https://fillmore-labs.com/errortype
+        settings:
+          style-check: true
+          deep-is-check: false
+          check-is: true
+          unchecked-assert: true
+          check-unused: true
+          # naming: true
     # keep-sorted start
     errcheck:
       exclude-functions:
         - go/ast.Fprint
         - go/format.Node
-        - io.WriteString
         - (io/fs.File).Close
         - (*os.File).Close
         - (*github.com/goccy/go-yaml.Encoder).Close
@@ -105,16 +116,16 @@ linters:
     govet:
       enable-all: true
       disable:
+        - errorsas
         - fieldalignment
         - shadow
     gosec:
       config:
-        ast:
-          - Fprint
-        format:
-          - Node
-        io:
-          - WriteString
+        G104:
+          ast:
+            - Fprint
+          format:
+            - Node
     nlreturn:
       block-size: 2
     predeclared:
@@ -162,6 +173,8 @@ linters:
         # keep-sorted end
   exclusions:
     rules:
+      - path: examples/
+        source: .
       - path: ^main\.go$
         linters:
           - gocheckcompilerdirectives

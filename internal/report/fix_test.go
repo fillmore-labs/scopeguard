@@ -98,7 +98,7 @@ func TestNeedParent(t *testing.T) {
 				}
 			}
 
-			if e.Inspector() == nil {
+			if !e.Valid() {
 				t.Fatal("Assignment not found")
 			}
 
