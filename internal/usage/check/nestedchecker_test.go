@@ -55,8 +55,8 @@ func TestNestedChecker_TrackAssignment(t *testing.T) {
 			name:    "disabled",
 			enabled: false,
 			ops: func(nc *NestedChecker) {
-				nc.TrackAssignment(v1, id1decl, OuterEnd, 1) // Outer assignment
-				nc.TrackAssignment(v1, id1use1, InnerUse, 2) // Inner assignment
+				nc.TrackNestedAssignment(v1, id1decl, OuterEnd, 1) // Outer assignment
+				nc.TrackNestedAssignment(v1, id1use1, InnerUse, 2) // Inner assignment
 			},
 			expected: nil,
 		},
@@ -64,8 +64,8 @@ func TestNestedChecker_TrackAssignment(t *testing.T) {
 			name:    "no_nesting",
 			enabled: true,
 			ops: func(nc *NestedChecker) {
-				nc.TrackAssignment(v1, id1decl, OuterEnd, 1)
-				nc.TrackAssignment(v1, id1use2, LaterUse, 2)
+				nc.TrackNestedAssignment(v1, id1decl, OuterEnd, 1)
+				nc.TrackNestedAssignment(v1, id1use2, LaterUse, 2)
 			},
 			expected: nil,
 		},
@@ -73,8 +73,8 @@ func TestNestedChecker_TrackAssignment(t *testing.T) {
 			name:    "simple_nesting",
 			enabled: true,
 			ops: func(nc *NestedChecker) {
-				nc.TrackAssignment(v1, id1decl, OuterEnd, 1) // v1 assigned, ends at 20
-				nc.TrackAssignment(v1, id1use1, OuterEnd, 2) // v1 nested assign at 15
+				nc.TrackNestedAssignment(v1, id1decl, OuterEnd, 1) // v1 assigned, ends at 20
+				nc.TrackNestedAssignment(v1, id1use1, OuterEnd, 2) // v1 nested assign at 15
 			},
 			expected: []NestedAssign{{Ident: id1use1, Asgn: 1}},
 		},
@@ -82,8 +82,8 @@ func TestNestedChecker_TrackAssignment(t *testing.T) {
 			name:    "different_variables",
 			enabled: true,
 			ops: func(nc *NestedChecker) {
-				nc.TrackAssignment(v1, id1decl, OtherUse, 1)
-				nc.TrackAssignment(v2, id2use, OuterEnd, 2)
+				nc.TrackNestedAssignment(v1, id1decl, OtherUse, 1)
+				nc.TrackNestedAssignment(v2, id2use, OuterEnd, 2)
 			},
 			expected: nil,
 		},

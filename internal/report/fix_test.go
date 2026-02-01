@@ -103,7 +103,7 @@ func TestNeedParent(t *testing.T) {
 			}
 
 			if got, want := NeedParent(e), tt.expected; got != want {
-				t.Errorf("needParent() = %v, want %v", got, want)
+				t.Errorf("Got NeedParent() = %v, want %v", got, want)
 			}
 		})
 	}

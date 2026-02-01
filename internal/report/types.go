@@ -17,12 +17,14 @@
 package report
 
 import (
+	"fillmore-labs.com/scopeguard/internal/astutil"
 	"fillmore-labs.com/scopeguard/internal/target"
 	"fillmore-labs.com/scopeguard/internal/usage"
 )
 
 // Diagnostics aggregates all analysis findings for the reporting stage.
 type Diagnostics struct {
+	astutil.CurrentFile
 	Moves []target.MoveTarget
 	usage.Diagnostics
 }

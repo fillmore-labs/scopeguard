@@ -57,8 +57,8 @@ func (nc *NestedChecker) NestedAssigned() []NestedAssign {
 	return nc.nestedAssigned
 }
 
-// TrackAssignment identifies nested assignments of variables and tracks their occurrences.
-func (nc *NestedChecker) TrackAssignment(v *types.Var, id *ast.Ident, assignmentDone token.Pos, asgn astutil.NodeIndex) {
+// TrackNestedAssignment identifies nested assignments of variables and tracks their occurrences.
+func (nc *NestedChecker) TrackNestedAssignment(v *types.Var, id *ast.Ident, assignmentDone token.Pos, asgn astutil.NodeIndex) {
 	if nc.assigned == nil {
 		return
 	}

@@ -32,6 +32,23 @@ func nested() {
 	_ = err
 }
 
+func nested2() {
+	var err error
+
+	{
+		err := error(nil)
+		_ = err
+	}
+
+	err, ok := func() (error, bool) {
+		err = error(nil) // want "Nested reassignment of variable 'err'"
+
+		return err, true
+	}()
+
+	_, _ = err, ok
+}
+
 func nestedOk() {
 	var err error
 

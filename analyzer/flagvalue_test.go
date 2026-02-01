@@ -52,7 +52,7 @@ func TestFlagValue(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			var flags config.BitMask[config.AnalyzerFlags]
+			var flags config.Analyzers
 			flags.Set(tt.initial, true)
 
 			fs := flag.NewFlagSet("test", flag.ContinueOnError)
@@ -79,7 +79,7 @@ func TestFlagValue(t *testing.T) {
 func TestUsage(t *testing.T) {
 	t.Parallel()
 
-	var flags config.BitMask[config.AnalyzerFlags]
+	var flags config.Analyzers
 	flags.Set(config.ScopeAnalyzer, true)
 
 	fs := flag.NewFlagSet("test", flag.ContinueOnError)

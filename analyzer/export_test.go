@@ -24,6 +24,6 @@ import (
 
 // NewAnalyzerValue returns a new flag.Value that maps to the specified flag bit.
 // It is used to export the unexported flagValue type for testing.
-func NewAnalyzerValue(flags *config.BitMask[config.AnalyzerFlags], value config.AnalyzerFlags) flag.Getter {
-	return boolValue[config.AnalyzerFlags, *config.BitMask[config.AnalyzerFlags]]{flags: flags, value: value}
+func NewAnalyzerValue(flags *config.Analyzers, value config.AnalyzerFlags) flag.Getter {
+	return boolValue[config.AnalyzerFlags, *config.Analyzers]{flags: flags, value: value}
 }

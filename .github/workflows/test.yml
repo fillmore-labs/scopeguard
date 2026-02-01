@@ -23,12 +23,12 @@ jobs:
         go: ["1.26", "1.25", "1.24"]
         include:
           - go: "1.26"
-            go-version: "1.26.0-rc.1"
-          - go: "1.25"
-            go-version: "1.25.5"
+            go-version: "1.26.0-rc.2"
             latest: true
+          - go: "1.25"
+            go-version: "1.25.6"
           - go: "1.24"
-            go-version: "1.24.11"
+            go-version: "1.24.12"
     env:
       GOTOOLCHAIN: local
     steps:
@@ -51,6 +51,7 @@ jobs:
           verify: false
       - name: 🔨 Test
         run: |
+          (cd ./internal/reachability/tracker/testdata && go mod download)
           go test -coverpkg ./... -coverprofile=cover.out ./...
       - name: 🧑🏻‍💻 codecov
         uses: codecov/codecov-action@671740ac38dd9b0130fbe1cec585b89eea48d3de  # v5.5.2

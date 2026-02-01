@@ -16,7 +16,12 @@
 
 package analyzer
 
-import "golang.org/x/tools/go/analysis"
+import (
+	"golang.org/x/tools/go/analysis"
+	"golang.org/x/tools/go/analysis/passes/inspect"
+
+	"fillmore-labs.com/scopeguard/internal/run"
+)
 
 // Public API constants for the scopeguard analyzer.
 const (
@@ -30,8 +35,17 @@ const (
 // for integrating the analyzer into other tools. For command-line use, the
 // pre-configured [Analyzer] variable is typically sufficient.
 func New(opts ...Option) *analysis.Analyzer {
-	r := makeRunOptions(opts)
-	a := r.analyzer()
+	r := run.DefaultOptions()
+	Options(opts).apply(r)
+
+	a := &analysis.Analyzer{
+		Name:     name,
+		Doc:      doc,
+		URL:      url,
+		Run:      r.Run,
+		Requires: []*analysis.Analyzer{inspect.Analyzer},
+	}
+
 	registerFlags(&a.Flags, r)
 
 	return a

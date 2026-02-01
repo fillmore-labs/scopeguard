@@ -30,7 +30,7 @@ Package gclplugin provides golangci-lint plugin integration for the [scopeguard]
 	plugins:
 	  - module: fillmore-labs.com/scopeguard
 	    import: fillmore-labs.com/scopeguard/gclplugin
-	    version: v0.0.4
+	    version: v0.0.5
 
 2. Run `golangci-lint custom` from your project root.
 

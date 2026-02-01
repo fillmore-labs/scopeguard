@@ -20,7 +20,7 @@ import "fmt"
 
 func foo() {
 	x := 1
-	a := 1
+	a := 1 // want "Variable 'a' can be moved to tighter block scope"
 	b := "abc"[x]
 	if x++; x > 0 {
 		fmt.Println(a, b)
@@ -48,7 +48,7 @@ func baz() {
 func safe() {
 	x := 1 // want "Variable 'x' can be moved to tighter if scope"
 	const c = 2
-	var v string = "1"
+	var v string = "1" // want "Variable 'v' can be moved to tighter block scope"
 	{
 		type T int
 	}
@@ -78,5 +78,16 @@ label:
 	if x == 0 {
 		fmt.Println(x, y)
 		goto label
+	}
+}
+
+func wraped() {
+	if true {
+		a, b := true, true // want "Variables 'a' and 'b' can be moved to tighter if scope"
+
+		if a {
+			if b {
+			}
+		}
 	}
 }

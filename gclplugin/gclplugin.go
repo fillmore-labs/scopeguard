@@ -17,17 +17,17 @@
 package gclplugin
 
 import (
-	"github.com/golangci/plugin-module-register/register"
+	golangci "github.com/golangci/plugin-module-register/register"
 	"golang.org/x/tools/go/analysis"
 
 	scopeguard "fillmore-labs.com/scopeguard/analyzer"
 )
 
-func init() { register.Plugin("scopeguard", New) }
+func init() { golangci.Plugin("scopeguard", New) }
 
 // New creates a new [Plugin] instance with the given [Settings].
-func New(rawSettings any) (register.LinterPlugin, error) {
-	settings, err := register.DecodeSettings[Settings](rawSettings)
+func New(rawSettings any) (golangci.LinterPlugin, error) {
+	settings, err := golangci.DecodeSettings[Settings](rawSettings)
 	if err != nil {
 		return nil, err
 	}
@@ -35,14 +35,14 @@ func New(rawSettings any) (register.LinterPlugin, error) {
 	return Plugin{settings: settings}, nil
 }
 
-// Plugin is the scopeguard linter as a [register.LinterPlugin].
+// Plugin is the scopeguard linter as a [golangci.LinterPlugin].
 type Plugin struct {
 	settings Settings
 }
 
 // GetLoadMode returns the golangci load mode.
 func (Plugin) GetLoadMode() string {
-	return register.LoadModeTypesInfo
+	return golangci.LoadModeTypesInfo
 }
 
 // BuildAnalyzers returns the [analysis.Analyzer]s for a scopeguard run.

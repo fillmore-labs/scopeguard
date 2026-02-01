@@ -3,6 +3,7 @@ version: "2"
 
 run:
   modules-download-mode: readonly
+  relative-path-mode: gomod
 
 formatters:
   enable:
@@ -72,6 +73,9 @@ linters:
     # keep-sorted start
     errcheck:
       exclude-functions:
+        - go/ast.Fprint
+        - go/format.Node
+        - io.WriteString
         - (io/fs.File).Close
         - (*os.File).Close
         - (*github.com/goccy/go-yaml.Encoder).Close
@@ -102,6 +106,15 @@ linters:
       enable-all: true
       disable:
         - fieldalignment
+        - shadow
+    gosec:
+      config:
+        ast:
+          - Fprint
+        format:
+          - Node
+        io:
+          - WriteString
     nlreturn:
       block-size: 2
     predeclared:
@@ -153,6 +166,6 @@ linters:
         linters:
           - gocheckcompilerdirectives
         text: "go:debug"
-      - linters:
-          - govet
-        text: '^shadow: declaration of "(ctx|err|ok)" shadows declaration at line \d+$'
+
+output:
+  sort-order: [file, linter]

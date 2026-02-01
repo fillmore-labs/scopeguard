@@ -36,7 +36,7 @@ func (c *collector) handleIdent(id *ast.Ident, idx astutil.NodeIndex) {
 		return // ignore usage on LHS of AssignStmt
 	}
 
-	c.RecordShadowedUse(v, id.NamePos, idx)
+	c.CheckUseAfterShadowed(v, id.NamePos, idx)
 
 	usage := c.attributeDeclaration(v, decl.start < id.NamePos)
 	if usage == nil {
@@ -65,35 +65,35 @@ func (c *collector) handleNamedResults(idx astutil.NodeIndex, results *ast.Field
 				continue
 			}
 
-			c.RecordShadowedUse(v, pos, idx)
+			c.CheckUseAfterShadowed(v, pos, idx)
 
-			usages := c.usages[v]
-			if len(usages) == 0 {
+			declarations := c.declarations[v]
+			if len(declarations) == 0 {
 				continue
 			}
 
-			usage := &usages[len(usages)-1]
+			declaration := &declarations[len(declarations)-1]
 
-			usage.Usage |= UsageUsed
+			declaration.Usage |= UsageUsed
 
-			c.notMovable(usage.Decl, v)
+			c.markNonMovable(v, declaration.Decl)
 		}
 	}
 }
 
 // attributeDeclaration returns the declaration that a variable usage should be attributed to.
 // current indicates whether the usage occurs within the scope of the current or previous declaration.
-func (c *collector) attributeDeclaration(v *types.Var, current bool) *NodeUsage {
-	usages := c.usages[v]
-	switch usageCount := len(usages); {
-	case current && usageCount > 0:
+func (c *collector) attributeDeclaration(v *types.Var, current bool) *DeclarationNode {
+	declarations := c.declarations[v]
+	switch d := len(declarations); {
+	case current && d > 0:
 		// The usage is attributed to the most recent declaration.
-		return &usages[usageCount-1]
+		return &declarations[d-1]
 
-	case !current && usageCount > 1:
+	case !current && d > 1:
 		// When a variable appears on the RHS of its own reassignment (e.g., x := x + 1),
 		// the usage belongs to the previous declaration, not the new one being defined.
-		return &usages[usageCount-2] // Use penultimate declaration
+		return &declarations[d-2] // Use penultimate declaration
 
 	default:
 		return nil // No previous declaration to attribute to

@@ -60,20 +60,20 @@ func (m MoveCandidate) movable() bool { return m.status.Movable() }
 // Type changes are blocked in two cases:
 //   - Conservative mode: Any type change for a used variable
 //   - Type change to untyped nil (would cause compile errors)
-func (cm CandidateManager) BlockMovesWithTypeChanges(allUsages iter.Seq2[*types.Var, []usage.NodeUsage], conservative bool) {
-	for _, usages := range allUsages {
-		for _, usage := range usages {
-			if !usedAndTypeChange(usage.Usage, conservative) {
+func (cm CandidateManager) BlockMovesWithTypeChanges(allDeclarations iter.Seq2[*types.Var, []usage.DeclarationNode], conservative bool) {
+	for _, declarations := range allDeclarations {
+		for _, declaration := range declarations {
+			if !usedAndTypeChange(declaration.Usage, conservative) {
 				continue
 			}
 
-			m, ok := cm.candidates[usage.Decl]
+			m, ok := cm.candidates[declaration.Decl]
 			if !ok || !m.movable() {
 				continue
 			}
 
 			m.status = check.MoveBlockedTypeChange
-			cm.candidates[usage.Decl] = m
+			cm.candidates[declaration.Decl] = m
 		}
 	}
 }
@@ -90,22 +90,22 @@ func (cm CandidateManager) BlockMovesWithTypeChanges(allUsages iter.Seq2[*types.
 //	x, y := "hello", 0  // Reassignment with different type
 //
 // Moving the first declaration would change x's type from any to string.
-func (cm CandidateManager) BlockMovesLosingTypeInfo(allUsages iter.Seq2[*types.Var, []usage.NodeUsage]) map[astutil.NodeIndex][]*types.Var {
+func (cm CandidateManager) BlockMovesLosingTypeInfo(allDeclarations iter.Seq2[*types.Var, []usage.DeclarationNode]) map[astutil.NodeIndex][]*types.Var {
 	unused := make(map[astutil.NodeIndex][]*types.Var)
 
-	for v, usages := range allUsages {
+	for v, declarations := range allDeclarations {
 		// If type info preservation is needed, the first declaration is effectively used (for type info)
-		keepTypeInfo := cm.evaluateTypeConstraints(usages)
+		keepTypeInfo := cm.evaluateTypeConstraints(declarations)
 
-		for _, usage := range usages {
+		for _, declaration := range declarations {
 			if keepTypeInfo {
 				keepTypeInfo = false
 				continue
 			}
 
 			// Populate unused map
-			if !usage.Usage.Used() {
-				unused[usage.Decl] = append(unused[usage.Decl], v)
+			if !declaration.Usage.Used() {
+				unused[declaration.Decl] = append(unused[declaration.Decl], v)
 			}
 		}
 	}
@@ -119,13 +119,13 @@ func (cm CandidateManager) BlockMovesLosingTypeInfo(allUsages iter.Seq2[*types.V
 //  1. Blocks moves that would violate type consistency (side effect on candidate status).
 //  2. Returns true if the variable declaration must be preserved for type info,
 //     even if the variable itself is unused.
-func (cm CandidateManager) evaluateTypeConstraints(usages []usage.NodeUsage) bool {
+func (cm CandidateManager) evaluateTypeConstraints(declarations []usage.DeclarationNode) bool {
 	// Analyze the variable's declaration and usage pattern
-	if len(usages) < 2 {
+	if len(declarations) < 2 {
 		return false
 	}
 
-	firstDecl := usages[0].Decl
+	firstDecl := declarations[0].Decl
 	if !firstDecl.Valid() {
 		return false
 	}
@@ -136,7 +136,7 @@ func (cm CandidateManager) evaluateTypeConstraints(usages []usage.NodeUsage) boo
 		return false
 	}
 
-	if !cm.typeChange(usages[1:]) {
+	if !cm.typeChange(declarations[1:]) {
 		return false
 	}
 
@@ -153,14 +153,14 @@ func (cm CandidateManager) evaluateTypeConstraints(usages []usage.NodeUsage) boo
 
 // typeChange finds the next non-moved usage of a variable after the first declaration.
 // Returns false if no such usage exists.
-func (cm CandidateManager) typeChange(usages []usage.NodeUsage) bool {
-	for _, usage := range usages {
+func (cm CandidateManager) typeChange(declarations []usage.DeclarationNode) bool {
+	for _, declaration := range declarations {
 		// skip moved declarations
-		if m, ok := cm.candidates[usage.Decl]; ok && m.movable() {
+		if m, ok := cm.candidates[declaration.Decl]; ok && m.movable() {
 			continue
 		}
 
-		return usage.Usage.TypeChange()
+		return declaration.Usage.TypeChange()
 	}
 
 	return false
@@ -253,7 +253,12 @@ func (cm CandidateManager) BlockSideEffects(info *types.Info, body inspector.Cur
 			continue
 		}
 
-		start, end := decl.Node(in).End(), m.targetNode.Pos()
+		node := decl.Node(in)
+		if check.InertStmt(info, node) {
+			continue
+		}
+
+		start, end := node.End(), m.targetNode.Pos()
 
 		// Conservative mode - check for intervening statements with possible side effects
 		if parent, ok := body.FindByPos(start, end); ok && !check.IntervalInert(info, parent, m.absorbedDecls, start, end) {
@@ -268,20 +273,20 @@ func (cm CandidateManager) BlockSideEffects(info *types.Info, body inspector.Cur
 //
 // This handles the case where a variable is reassigned multiple times, and moving
 // the first declaration leaves subsequent assignments with no remaining reads.
-func (cm CandidateManager) OrphanedDeclarations(allUsages iter.Seq2[*types.Var, []usage.NodeUsage]) map[astutil.NodeIndex][]*types.Var {
+func (cm CandidateManager) OrphanedDeclarations(allDeclarations iter.Seq2[*types.Var, []usage.DeclarationNode]) map[astutil.NodeIndex][]*types.Var {
 	orphanedDeclarations := make(map[astutil.NodeIndex][]*types.Var)
 
-	for v, usages := range allUsages {
+	for v, declarations := range allDeclarations {
 		// Skip if fewer than 2 declarations (need at least one moved and one remaining)
-		if len(usages) < 2 {
+		if len(declarations) < 2 {
 			continue
 		}
 
 		// Check if there are any read usages remaining
 		hasUsage := false
 
-		for _, usage := range usages {
-			index := usage.Decl
+		for _, declaration := range declarations {
+			index := declaration.Decl
 			if !index.Valid() {
 				hasUsage = true
 				break
@@ -292,7 +297,7 @@ func (cm CandidateManager) OrphanedDeclarations(allUsages iter.Seq2[*types.Var, 
 				continue
 			}
 
-			if usage.Usage.Used() {
+			if declaration.Usage.Used() {
 				hasUsage = true
 				break
 			}
@@ -303,8 +308,8 @@ func (cm CandidateManager) OrphanedDeclarations(allUsages iter.Seq2[*types.Var, 
 		}
 
 		// No usages remaining, mark all remaining occurrences for removal
-		for _, usage := range usages {
-			index := usage.Decl
+		for _, declaration := range declarations {
+			index := declaration.Decl
 			if !index.Valid() {
 				continue
 			}
