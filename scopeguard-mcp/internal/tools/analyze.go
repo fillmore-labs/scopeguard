@@ -30,7 +30,8 @@ import (
 	"fillmore-labs.com/scopeguard/scopeguard-mcp/internal/mcputil"
 )
 
-func addAnalyzeTool(server *mcp.Server) {
+// AddAnalyzeTool registers the "analyze" tool.
+func AddAnalyzeTool(server *mcp.Server) {
 	tool := &mcp.Tool{
 		Name:        guidance.AnalyzeToolName,
 		Title:       "Analyze",
@@ -87,10 +88,10 @@ func (AnalyzeContext) Analyze(ctx context.Context, _ *mcp.CallToolRequest, args 
 		Behaviors: config.FirstUseOnly | config.CombineDeclarations,
 		Functions: args.Functions,
 		MaxLines:  maxLines,
-		Filters:   config.NewFilters(filter, config.FilterNothing), // No fixes for analyze
+		Filters:   config.NewFilters(filter, config.Nothing), // No fixes for analyze
 	}
 
-	a := r.New()
+	a := r.Analyzer()
 
 	graph, err := engine.AnalyzePackages(ctx, args.Args, a)
 	if err != nil {

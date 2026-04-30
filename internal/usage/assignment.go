@@ -51,13 +51,13 @@ func (c *collector) handleAssignedVars(exprs []ast.Expr, assignmentDone token.Po
 		}
 
 		if done == nil {
-			done = set.New[*types.Var]()
+			done = set.Of[*types.Var]()
 		} else if done.Contains(v) {
 			// Filter out duplicate occurrences, like x, x = ...
 			continue
 		}
 
-		done.Add(v)
+		done.Insert(v)
 
 		declScope := true
 

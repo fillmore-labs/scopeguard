@@ -90,6 +90,12 @@ func TestAnalyzer(t *testing.T) {
 			options: WithUnsafe(true),
 			fix:     true,
 		},
+		{
+			name:    "Inert",
+			dir:     "./inert",
+			options: nil,
+			fix:     true,
+		},
 	}
 
 	for _, tt := range tests {
@@ -127,11 +133,11 @@ func TestUnmatchedFilter(t *testing.T) {
 
 	results := analysistest.Run(t, testdata, a, "./filter")
 
-	processed := set.New[typeutil.LocalFuncName]()
+	processed := set.Of[typeutil.LocalFuncName]()
 
 	for _, r := range results {
 		for _, p := range r.Result.(run.Result).Processed {
-			processed.Add(p.Name)
+			processed.Insert(p.Name)
 		}
 	}
 

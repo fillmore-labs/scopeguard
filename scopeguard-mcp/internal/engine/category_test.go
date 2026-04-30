@@ -59,8 +59,7 @@ func TestCategory_Info(t *testing.T) {
 		{
 			name:       "Unknown Category",
 			category:   "unknown_category",
-			wantSafety: config.Unknown,
-			wantIssue:  IssueUnknown,
+			wantSafety: config.Nothing,
 			wantReason: "Internal error",
 		},
 	}

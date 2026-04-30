@@ -86,7 +86,7 @@ func (cm CandidateManager) OrphanedDeclarations(allDeclarations iter.Seq2[*types
 				continue
 			}
 
-			if declaration.Usage.Used() {
+			if declaration.Usage.Has(usage.UsageUsed) {
 				hasUsage = true
 				break
 			}

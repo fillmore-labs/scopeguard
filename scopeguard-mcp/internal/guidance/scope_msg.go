@@ -116,7 +116,7 @@ var ScopeRules = Rules[ScopeContext]{
 
 		return NextStep{
 			NextTool: ScopeToolName,
-			Args:     map[string]any{"mode": "apply", "apply": []string{"..."}},
+			Args:     map[string]any{"mode": "apply", "apply": []string{"... edit id list ..."}},
 			Recommendation: fmt.Sprintf(
 				"Review %d unsafe diff(s) before applying (%s).",
 				f.BySafety[config.Unsafe], HelpRef("unsafe"),
@@ -128,7 +128,7 @@ var ScopeRules = Rules[ScopeContext]{
 	func(f engine.Facts, _ ScopeContext) (NextStep, bool) {
 		return NextStep{
 			NextTool: ScopeToolName,
-			Args:     map[string]any{"mode": "apply", "apply": []string{"..."}},
+			Args:     map[string]any{"mode": "apply", "apply": []string{"... edit id list ..."}},
 			Recommendation: fmt.Sprintf(
 				"Review %d breaking diff(s) before applying (%s).",
 				f.BySafety[config.Breaking], HelpRef("breaking"),

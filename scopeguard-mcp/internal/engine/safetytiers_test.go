@@ -30,36 +30,36 @@ func TestSafetyTiers_MarshalJSON(t *testing.T) {
 	tests := []struct {
 		name   string
 		want   string
-		filter config.SafetyFilter
+		filter SafetyTiers
 	}{
 		{
 			name:   "Empty",
-			filter: config.FilterNothing,
+			filter: None,
 			want:   `[]`,
 		},
 		{
 			name:   "Safe only",
-			filter: config.FilterSafe,
+			filter: Safe,
 			want:   `["safe"]`,
 		},
 		{
 			name:   "Unsafe only",
-			filter: config.FilterUnsafe,
+			filter: Unsafe,
 			want:   `["unsafe"]`,
 		},
 		{
 			name:   "Breaking only",
-			filter: config.FilterBreaking,
+			filter: Breaking,
 			want:   `["breaking"]`,
 		},
 		{
 			name:   "Safe and Breaking",
-			filter: config.FilterSafe | config.FilterBreaking,
+			filter: Safe | Breaking,
 			want:   `["safe","breaking"]`,
 		},
 		{
 			name:   "All tiers",
-			filter: config.FilterAll,
+			filter: SafetyTiers(config.All),
 			want:   `["safe","unsafe","breaking"]`,
 		},
 	}
@@ -68,7 +68,7 @@ func TestSafetyTiers_MarshalJSON(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			b, err := json.Marshal(SafetyTiers(tt.filter))
+			b, err := json.Marshal(tt.filter)
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
@@ -86,33 +86,33 @@ func TestSafetyTiers_UnmarshalJSON(t *testing.T) {
 	tests := []struct {
 		name    string
 		input   string
-		want    config.SafetyFilter
+		want    config.Safety
 		wantErr bool
 	}{
 		{
 			name:  "Empty array",
 			input: `[]`,
-			want:  config.FilterNothing,
+			want:  config.Nothing,
 		},
 		{
 			name:  "Null",
 			input: `null`,
-			want:  config.FilterAll,
+			want:  config.All,
 		},
 		{
 			name:  "Safe only",
 			input: `["safe"]`,
-			want:  config.FilterSafe,
+			want:  config.Safe,
 		},
 		{
 			name:  "Safe and Breaking",
 			input: `["breaking", "safe"]`,
-			want:  config.FilterSafe | config.FilterBreaking,
+			want:  config.Safe | config.Breaking,
 		},
 		{
 			name:  "All tiers",
 			input: `["safe", "unsafe", "breaking"]`,
-			want:  config.FilterAll,
+			want:  config.All,
 		},
 		{
 			name:    "Invalid format",
@@ -130,15 +130,15 @@ func TestSafetyTiers_UnmarshalJSON(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			var got SafetyTiers
+			var tiers *SafetyTiers
 
-			if err := json.Unmarshal([]byte(tt.input), &got); (err != nil) != tt.wantErr {
+			if err := json.Unmarshal([]byte(tt.input), &tiers); (err != nil) != tt.wantErr {
 				t.Errorf("UnmarshalJSON() error got %v, wantErr %v", err, tt.wantErr)
 				return
 			}
 
-			if !tt.wantErr && got != SafetyTiers(tt.want) {
-				t.Errorf("UnmarshalJSON() got %v, want %v", config.SafetyFilter(got).Tiers(), tt.want.Tiers())
+			if got := tiers.Filter(); !tt.wantErr && got != tt.want {
+				t.Errorf("UnmarshalJSON() got %v, want %v", got, tt.want)
 			}
 		})
 	}
@@ -147,15 +147,15 @@ func TestSafetyTiers_UnmarshalJSON(t *testing.T) {
 func TestSafetyTiers_RoundTrip(t *testing.T) {
 	t.Parallel()
 
-	filters := []config.SafetyFilter{
-		config.FilterNothing,
-		config.FilterSafe,
-		config.FilterUnsafe,
-		config.FilterBreaking,
-		config.FilterSafe | config.FilterUnsafe,
-		config.FilterSafe | config.FilterBreaking,
-		config.FilterUnsafe | config.FilterBreaking,
-		config.FilterAll,
+	filters := []config.Safety{
+		config.Nothing,
+		config.Safe,
+		config.Unsafe,
+		config.Breaking,
+		config.Safe | config.Unsafe,
+		config.Safe | config.Breaking,
+		config.Unsafe | config.Breaking,
+		config.All,
 	}
 
 	for _, f := range filters {
@@ -166,12 +166,12 @@ func TestSafetyTiers_RoundTrip(t *testing.T) {
 			t.Fatalf("Marshal(%v) error: %v", f, err)
 		}
 
-		var decoded SafetyTiers
+		var decoded *SafetyTiers
 		if err := json.Unmarshal(data, &decoded); err != nil {
 			t.Fatalf("Unmarshal(%s) error: %v", string(data), err)
 		}
 
-		if decoded != original {
+		if decoded.Filter() != f {
 			t.Errorf("round trip got %v, want %v (json: %s)", decoded, original, string(data))
 		}
 	}
@@ -180,10 +180,10 @@ func TestSafetyTiers_RoundTrip(t *testing.T) {
 func TestSafetyTiers_Filter(t *testing.T) {
 	t.Parallel()
 
-	cases := []config.SafetyFilter{
-		config.FilterNothing,
-		config.FilterSafe,
-		config.FilterAll,
+	cases := []config.Safety{
+		config.Nothing,
+		config.Safe,
+		config.All,
 	}
 
 	for _, want := range cases {
@@ -193,7 +193,7 @@ func TestSafetyTiers_Filter(t *testing.T) {
 		}
 	}
 
-	if got := (*SafetyTiers)(nil).Filter(); got != config.FilterAll {
+	if got := (*SafetyTiers)(nil).Filter(); got != config.All {
 		t.Errorf("nil.Filter() got %v, want FilterAll", got)
 	}
 }
@@ -217,7 +217,7 @@ func TestSafetyTiers_PointerOmitEmpty(t *testing.T) {
 		t.Errorf("Marshal(nil) got %s, want %s", got, want)
 	}
 
-	tiers := SafetyTiers(config.FilterSafe)
+	tiers := Safe
 
 	bSet, err := json.Marshal(wrapper{Safety: &tiers})
 	if err != nil {

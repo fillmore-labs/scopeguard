@@ -47,7 +47,7 @@ type AnalyzerDiagnostic struct {
 func AllDiagnostics(graph *checker.Graph) iter.Seq[AnalyzerDiagnostic] {
 	return func(yield func(AnalyzerDiagnostic) bool) {
 		// Filter duplicate diagnostics in pkg and pkg.test
-		seen := set.New[editKey]()
+		seen := set.Of[EditKey]()
 
 		for _, act := range graph.Roots {
 			pkg := act.Package
@@ -62,7 +62,7 @@ func AllDiagnostics(graph *checker.Graph) iter.Seq[AnalyzerDiagnostic] {
 
 				pos := file.PositionFor(diag.Pos, false)
 
-				k := editKey{
+				k := EditKey{
 					Filename: pos.Filename,
 					Offset:   pos.Offset,
 					Message:  diag.Message,
@@ -71,7 +71,7 @@ func AllDiagnostics(graph *checker.Graph) iter.Seq[AnalyzerDiagnostic] {
 					continue // duplicate
 				}
 
-				seen.Add(k)
+				seen.Insert(k)
 
 				var (
 					id    EditID
@@ -79,7 +79,7 @@ func AllDiagnostics(graph *checker.Graph) iter.Seq[AnalyzerDiagnostic] {
 					edits []diff.Edit
 				)
 				if len(diag.SuggestedFixes) > 0 {
-					id = k.editID()
+					id = k.EditID()
 					suggestedFix := diag.SuggestedFixes[0]
 					edit = suggestedFix.Message
 					edits = toDiffEdits(file, suggestedFix.TextEdits)

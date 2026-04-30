@@ -28,10 +28,10 @@ func TestSet(t *testing.T) {
 	t.Parallel()
 
 	// given
-	s := New[int]()
+	s := Of[int]()
 
 	// when
-	s.Add(1)
+	s.Insert(1)
 
 	// then
 	if !s.Contains(1) {
@@ -47,7 +47,7 @@ func TestUnset(t *testing.T) {
 	// when
 
 	// then
-	if s := New[int](); s.Contains(1) {
+	if s := Of[int](); s.Contains(1) {
 		t.Error("Expected 1 to be unset")
 	}
 }
@@ -56,7 +56,7 @@ func TestAll(t *testing.T) {
 	t.Parallel()
 
 	// given
-	s := New(1)
+	s := Of(1)
 
 	// when
 	var e0 int
@@ -85,14 +85,14 @@ func TestSorted(t *testing.T) {
 		args args
 		want []int
 	}{
-		{"2, 1", args{New(2, 1)}, []int{1, 2}},
+		{"2, 1", args{Of(2, 1)}, []int{1, 2}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
 			if got := Sorted(tt.args.s); !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("Sorted(%q) = %v, want %v", tt.args.s, got, tt.want)
+				t.Errorf("Sorted(%v) = %v, want %v", tt.args.s, got, tt.want)
 			}
 		})
 	}
@@ -110,14 +110,14 @@ func TestAllSorted(t *testing.T) {
 		args args
 		want []int
 	}{
-		{"2, 1", args{New(2, 1)}, []int{1, 2}},
+		{"2, 1", args{Of(2, 1)}, []int{1, 2}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
 			if got := slices.Collect(AllSorted(tt.args.s)); !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("AllSorted(%q) = %v, want %v", tt.args.s, got, tt.want)
+				t.Errorf("AllSorted(%v) = %v, want %v", tt.args.s, got, tt.want)
 			}
 		})
 	}

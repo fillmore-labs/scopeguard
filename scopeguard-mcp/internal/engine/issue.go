@@ -27,8 +27,8 @@ import (
 type Issue uint8
 
 const (
-	// IssueUnknown represents an unrecognized diagnostic category.
-	IssueUnknown Issue = iota
+	// unrecognized diagnostic category.
+	_ Issue = iota
 
 	// IssueScope represents issues related to scope.
 	IssueScope
@@ -63,7 +63,13 @@ func ValidIssueNames() []string {
 
 // MarshalText implements [encoding.TextMarshaler].
 func (i Issue) MarshalText() ([]byte, error) {
-	return []byte(i.String()), nil
+	return i.AppendText(nil)
+}
+
+// AppendText implements [encoding.TextAppender].
+func (i Issue) AppendText(b []byte) ([]byte, error) {
+	str := i.String()
+	return append(b, str...), nil
 }
 
 // UnmarshalText implements [encoding.TextUnmarshaler].

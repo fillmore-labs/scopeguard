@@ -5,7 +5,7 @@ when:
 
 matrix:
   GO_VERSION:
-    - "tip"
+    - 'tip'
 
 steps:
   - name: test

@@ -98,7 +98,7 @@ func TestNeedParent(t *testing.T) {
 				t.Fatal("Assignment not found")
 			}
 
-			if got, want := NeedParent(e), tt.needsParens; got != want {
+			if got, want := NeedParen(e), tt.needsParens; got != want {
 				t.Errorf("Got NeedParent() = %v, want %v", got, want)
 			}
 		})

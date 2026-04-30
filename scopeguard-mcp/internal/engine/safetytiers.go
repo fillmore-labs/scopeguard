@@ -16,61 +16,44 @@
 
 package engine
 
-import (
-	"encoding/json"
+import "fillmore-labs.com/scopeguard/internal/config"
 
-	"fillmore-labs.com/scopeguard/internal/config"
-)
-
-// SafetyTiers wraps [config.SafetyFilter] for JSON marshaling as a list of
+// SafetyTiers wraps [config.Safety] for JSON marshaling as a list of
 // tier names. It carries the same orientation as the underlying filter:
 // each set bit represents a tier that is included.
 //
 // In tool input structs, use *SafetyTiers so a nil pointer signals
 // "default: include all tiers"; a non-nil value carries an explicit
 // selection (which may be empty, meaning "include no tiers").
-type SafetyTiers config.SafetyFilter
+//
+//go:generate go tool bitmask -type SafetyTiers -json
+type SafetyTiers config.Safety
 
-// Filter returns the underlying [config.SafetyFilter], or [config.FilterAll] when
-// the receiver is nil. Call sites use this to map "field omitted" to the default
-// "include every tier".
-func (s *SafetyTiers) Filter() config.SafetyFilter {
+const (
+	// Safe means the fix can be applied without risk.
+	Safe = SafetyTiers(config.Safe) // safe
+
+	// Unsafe means the fix is structurally valid but may reorder side effects.
+	Unsafe = SafetyTiers(config.Unsafe) // unsafe
+
+	// Breaking means the fix could break compilation; requires manual review.
+	Breaking = SafetyTiers(config.Breaking) // breaking
+
+	// None suppresses everything.
+	None = SafetyTiers(config.Nothing) // none
+)
+
+// Filter returns the underlying [config.Safety], or [config.All] when the receiver is nil.
+// Call sites use this to map "field omitted" to the default "include every tier".
+func (s *SafetyTiers) Filter() config.Safety {
 	if s == nil {
-		return config.FilterAll
+		return config.All
 	}
 
-	return config.SafetyFilter(*s)
+	return config.Safety(*s)
 }
 
-// MarshalJSON implements [json.Marshaler]. It emits the included tiers as a
-// JSON array of names; an empty filter marshals to "[]" so the round trip
-// through [SafetyTiers.UnmarshalJSON] is stable.
-func (s SafetyTiers) MarshalJSON() ([]byte, error) {
-	f := config.SafetyFilter(s)
-
-	return json.Marshal(f.Tiers())
-}
-
-// UnmarshalJSON implements [json.Unmarshaler]. The input must be a JSON array
-// of tier names; each name sets the corresponding bit in the resulting
-// filter. An empty array yields [config.FilterNothing] (no tiers included).
-func (s *SafetyTiers) UnmarshalJSON(data []byte) error {
-	var tiers []config.Safety
-	if err := json.Unmarshal(data, &tiers); err != nil {
-		return err
-	}
-
-	if tiers == nil {
-		*s = SafetyTiers(config.FilterAll)
-		return nil
-	}
-
-	var f config.SafetyFilter
-	for _, c := range tiers {
-		f.SetSafety(c, true)
-	}
-
-	*s = SafetyTiers(f)
-
-	return nil
+// ValidTiers returns a slice of valid safety tier names.
+func ValidTiers() []string {
+	return _SafetyTiersNames[:]
 }

@@ -92,7 +92,7 @@ func Process(diagnostics iter.Seq[AnalyzerDiagnostic], mode ProcessMode, applyEd
 var errEditIDsRequired = errors.New("mode 'apply' requires explicit IDs")
 
 func collectBatches(diagnostics iter.Seq[AnalyzerDiagnostic], mode ProcessMode, applyEdits []EditID) (map[string][]AnalyzerDiagnostic, error) {
-	filter := config.FilterNothing // preview everything outside of applyEdits by default
+	filter := config.Nothing // preview everything outside of applyEdits by default
 
 	var matchedEdits map[EditID]bool
 
@@ -110,7 +110,7 @@ func collectBatches(diagnostics iter.Seq[AnalyzerDiagnostic], mode ProcessMode, 
 		}
 
 	case ProcessApplySafe:
-		filter = config.FilterSafe // do not apply unsafe or breaking edits without explicit request
+		filter = config.Safe // do not apply unsafe or breaking edits without explicit request
 
 	default:
 		return nil, fmt.Errorf("unknown mode %v", mode)
@@ -123,7 +123,7 @@ func collectBatches(diagnostics iter.Seq[AnalyzerDiagnostic], mode ProcessMode, 
 			d.Apply = true
 			matchedEdits[d.ID] = true
 		} else {
-			d.Apply = filter.Allowed(d.Info.Safety)
+			d.Apply = filter.Has(d.Info.Safety)
 		}
 
 		batches[d.File] = append(batches[d.File], d)
@@ -164,8 +164,8 @@ func processFile(processed []ProcessedEdit, name string, batch []AnalyzerDiagnos
 	}
 
 	defer func() {
-		if cerr := f.Close(); cerr != nil && err == nil {
-			err = fmt.Errorf("can't close %q: %w", name, cerr)
+		if errC := f.Close(); errC != nil && err == nil {
+			err = fmt.Errorf("can't close %q: %w", name, errC)
 		}
 	}()
 
@@ -235,7 +235,7 @@ func processFile(processed []ProcessedEdit, name string, batch []AnalyzerDiagnos
 
 	// Prefer 'gofmt' output, but fall back to the raw applied result rather than
 	// losing a correct fix if formatting fails.
-	if formatted, ferr := format.Source(result); ferr == nil {
+	if formatted, err := format.Source(result); err == nil {
 		result = formatted
 	}
 
@@ -270,7 +270,7 @@ func renderUnified(src, label string, edits []diff.Edit) (string, error) {
 
 	lines := diff.Lines(src, after)
 
-	unified, err := diff.ToUnified(label, label, src, lines, diffContextLines)
+	unified, err := diff.ToUnified(label+" (old)", label+" (new)", src, lines, diffContextLines)
 	if err != nil {
 		return "", fmt.Errorf("internal error: can't create unified diff: %w", err)
 	}

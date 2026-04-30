@@ -5,8 +5,8 @@ when:
 
 matrix:
   GO_VERSION:
-    - "1.26.2"
-    - "1.25.9"
+    - '1.27.4'
+    - '1.26.11'
 
 steps:
   - name: test
@@ -28,4 +28,4 @@ steps:
       - echo "🔨 Testing on $(go version):"
       - go -C scopeguard-mcp test . ./internal/server/... ./internal/tools/...
     when:
-      - evaluate: 'GO_VERSION startsWith "1.26"'
+      - evaluate: 'GO_VERSION startsWith "1.27"'

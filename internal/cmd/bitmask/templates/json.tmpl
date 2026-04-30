@@ -1,0 +1,29 @@
+
+// MarshalJSON implements [encoding/json.Marshaler]. It emits a JSON array of bit names
+// in ascending bit position order; aliases are not used on output. An empty
+// mask is rendered as "[]".
+func ({{.Receiver}} {{.TypeName}}) MarshalJSON() ([]byte, error) {
+	data, err := bitmask.MarshalJSON(uint64({{.Receiver}}), _{{.TypeName}}Names[:]) // #nosec G115 -- validated during generation.
+	if err != nil {
+		return nil, fmt.Errorf("{{.TypeName}}: %w", err)
+	}
+
+	return data, nil
+}
+
+// UnmarshalJSON implements [encoding/json.Unmarshaler]. It accepts:
+{{- if .TrueValue}}
+//   - bool: true sets [{{.TrueValue}}]; false {{.TypeName}}(0).
+{{- end}}
+//   - string: parsed via [{{.TypeName}}.UnmarshalText] (comma- or whitespace-separated names).
+//   - array of strings: each element resolved by name (bit names or aliases).
+func ({{.Receiver}} *{{.TypeName}}) UnmarshalJSON(data []byte) error {
+	val, err := bitmask.UnmarshalJSON(data, _{{.TypeName}}ParseName, {{if .TrueValue}}uint64({{.TrueValue}}){{else}}0{{end}})
+	if err != nil {
+		return fmt.Errorf("{{.TypeName}}: %w", err)
+	}
+
+	*{{.Receiver}} = {{.TypeName}}(val) // #nosec G115 -- validated during generation.
+
+	return nil
+}

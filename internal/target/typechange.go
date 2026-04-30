@@ -30,7 +30,7 @@ import (
 func (cm CandidateManager) BlockMovesWithTypeChanges(allDeclarations iter.Seq2[*types.Var, []usage.DeclarationNode]) {
 	for _, declarations := range allDeclarations {
 		for _, declaration := range declarations {
-			if !declaration.Usage.UsedAndTypeChange() {
+			if !declaration.Usage.Has(usage.UsageUsedAndTypeChange) {
 				continue
 			}
 
@@ -71,7 +71,7 @@ func (cm CandidateManager) BlockMovesLosingTypeInfo(allDeclarations iter.Seq2[*t
 			}
 
 			// Populate unused map
-			if !declaration.Usage.Used() {
+			if !declaration.Usage.Has(usage.UsageUsed) {
 				unused[declaration.Decl] = append(unused[declaration.Decl], v)
 			}
 		}
@@ -127,7 +127,7 @@ func (cm CandidateManager) typeChange(declarations []usage.DeclarationNode) bool
 			continue
 		}
 
-		return declaration.Usage.TypeChange()
+		return declaration.Usage.Has(usage.UsageTypeChange)
 	}
 
 	return false

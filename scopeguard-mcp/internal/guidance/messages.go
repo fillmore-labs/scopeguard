@@ -30,7 +30,7 @@ func FilterPhrase(f engine.Facts) string {
 		return ""
 	}
 
-	return fmt.Sprintf("(safety filters: %s)", strings.Join(f.Filter.Tiers(), ", "))
+	return fmt.Sprintf("(safety filters: %s)", f.Filter.String())
 }
 
 // TruncationPhrase returns "N not shown (<helpRef>)" when items were dropped

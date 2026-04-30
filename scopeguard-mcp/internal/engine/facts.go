@@ -34,7 +34,7 @@ type Facts struct {
 	Counts
 
 	Mode   ProcessMode
-	Filter config.SafetyFilter
+	Filter config.Safety
 }
 
 // AddDiagnostic records one diagnostic into the aggregate counts.

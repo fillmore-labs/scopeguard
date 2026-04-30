@@ -35,12 +35,12 @@ func TestAnalyzeMessage(t *testing.T) {
 	}{
 		{
 			name: "no issues, default tiers",
-			f:    engine.Facts{Counts: engine.Counts{Total: 0}, Filter: config.FilterAll},
+			f:    engine.Facts{Counts: engine.Counts{Total: 0}, Filter: config.All},
 			want: `^No issues found$`,
 		},
 		{
 			name: "no matching issues with safety filter",
-			f:    engine.Facts{Counts: engine.Counts{Total: 0}, Filter: config.FilterSafe},
+			f:    engine.Facts{Counts: engine.Counts{Total: 0}, Filter: config.Safe},
 			want: `^No matching issues found \(safety filter active\)$`,
 		},
 		{
@@ -54,7 +54,7 @@ func TestAnalyzeMessage(t *testing.T) {
 						engine.IssueShadow: 2,
 					},
 				},
-				Filter: config.FilterAll,
+				Filter: config.All,
 			},
 			want: `^3 scope, 2 shadow issue\(s\) found$`,
 		},
@@ -67,7 +67,7 @@ func TestAnalyzeMessage(t *testing.T) {
 					ByCategory: map[engine.Issue]int{engine.IssueScope: 1},
 					BySafety:   map[config.Safety]int{config.Breaking: 1},
 				},
-				Filter: config.FilterAll,
+				Filter: config.All,
 			},
 			want: `^1 scope issue\(s\) found; 1 issue\(s\) have compilation-breaking fixes \(see help topic 'breaking'\)$`,
 		},
@@ -79,7 +79,7 @@ func TestAnalyzeMessage(t *testing.T) {
 					Dropped:    5,
 					ByCategory: map[engine.Issue]int{engine.IssueScope: 10},
 				},
-				Filter: config.FilterAll,
+				Filter: config.All,
 			},
 			want: `^10 scope issue\(s\) found; 5 not shown \(see help topic 'limits'\)$`,
 		},
@@ -87,7 +87,7 @@ func TestAnalyzeMessage(t *testing.T) {
 			name: "total with empty by-category",
 			f: engine.Facts{
 				Counts: engine.Counts{Total: 4, Dropped: 0},
-				Filter: config.FilterAll,
+				Filter: config.All,
 			},
 			want: `^4 issue\(s\) found$`,
 		},

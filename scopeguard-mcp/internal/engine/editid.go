@@ -16,37 +16,34 @@
 
 package engine
 
-import (
-	"fmt"
-	"hash/fnv"
-	"strconv"
-)
+import "strconv"
 
-// editKey identifies a diagnostic by its source location and message,
-// used as input to [editKey.editID]. It is not stored or transmitted.
-type editKey struct {
+// EditKey identifies a diagnostic by its source location and message,
+// used as input to [EditKey.editID]. It is not stored or transmitted.
+type EditKey struct {
 	Filename string // absolute path to the source file
 	Message  string // diagnostic message text
 	Offset   int    // byte offset within the file
 }
 
-// editID computes a fingerprint from file path, byte offset, and message.
-func (k editKey) editID() EditID {
-	var buf [6]byte
+// EditID computes a fingerprint from file path, byte offset, and message.
+func (k EditKey) EditID() EditID {
+	var buf [20]byte
+	offset := strconv.AppendInt(buf[:0], int64(k.Offset), 10)
 
-	h := fnv.New32a()
-	_, _ = h.Write([]byte(k.Filename))                             // ignore error
-	_, _ = h.Write([]byte{':'})                                    // ignore error
-	_, _ = h.Write(strconv.AppendInt(buf[:], int64(k.Offset), 10)) // ignore error
-	_, _ = h.Write([]byte{':'})                                    // ignore error
-	_, _ = h.Write([]byte(k.Message))                              // ignore error
+	h := new32a()
+	h.write([]byte(k.Filename))
+	h.write([]byte{':'})
+	h.write(offset)
+	h.write([]byte{':'})
+	h.write([]byte(k.Message))
 
-	e := h.Sum32()
-	if e == 0 {
-		e = 1
+	v := h.sum32()
+	if v == 0 {
+		v = 1
 	}
 
-	return EditID(e)
+	return EditID(v)
 }
 
 // EditID is the unique ID of an edit.
@@ -54,7 +51,13 @@ type EditID uint32
 
 // String implements [fmt.Stringer].
 func (e EditID) String() string {
-	s, _ := e.MarshalText() // ignore error
+	if e == 0 {
+		return ""
+	}
+
+	var buf [8]byte
+	s := appendHex(buf[:0], uint32(e))
+
 	return string(s)
 }
 
@@ -85,5 +88,42 @@ func (e EditID) AppendText(buf []byte) ([]byte, error) {
 		return buf, nil
 	}
 
-	return fmt.Appendf(buf, "%08x", uint32(e)), nil
+	return appendHex(buf, uint32(e)), nil
+}
+
+type sum32a uint32
+
+const (
+	offset32 = 2166136261
+	prime32  = 16777619
+)
+
+func new32a() sum32a {
+	return offset32
+}
+
+func (s *sum32a) sum32() uint32 { return uint32(*s) }
+
+func (s *sum32a) write(data []byte) {
+	hash := *s
+	for _, c := range data {
+		hash ^= sum32a(c)
+		hash *= prime32
+	}
+	*s = hash
+}
+
+func appendHex(buf []byte, v uint32) []byte {
+	const hex = "0123456789abcdef"
+
+	return append(buf,
+		hex[v>>28],
+		hex[(v>>24)&0xf],
+		hex[(v>>20)&0xf],
+		hex[(v>>16)&0xf],
+		hex[(v>>12)&0xf],
+		hex[(v>>8)&0xf],
+		hex[(v>>4)&0xf],
+		hex[v&0xf],
+	)
 }

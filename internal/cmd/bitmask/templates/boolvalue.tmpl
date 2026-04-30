@@ -1,0 +1,38 @@
+
+// BoolFlag returns a boolean [flag.Value] for {{.Receiver}}.
+{{- if .Bits }}
+//
+// Use it with
+//
+//	var {{.Receiver}} {{.TypeName}}
+//	flag.Var({{.Receiver}}.BoolFlag({{(index .Bits 0).Const}}), "name", "usage")
+{{- end}}
+func ({{.Receiver}} *{{.TypeName}}) BoolFlag(mask {{.TypeName}}) {{.TypeName}}BoolFlag {
+	return {{.TypeName}}BoolFlag{value: {{.Receiver}}, mask: mask}
+}
+
+// {{.TypeName}}BoolFlag implements [flag.Value] to bind a {{.TypeName}} configuration to a specific flag for command-line parsing.
+type {{.TypeName}}BoolFlag struct {
+	value *{{.TypeName}}
+	mask  {{.TypeName}}
+}
+
+// String implements [flag.Value].
+func (v {{.TypeName}}BoolFlag) String() string {
+	return strconv.FormatBool(v.value != nil && v.value.Has(v.mask))
+}
+
+// Set implements [flag.Value].
+func (v {{.TypeName}}BoolFlag) Set(s string) error {
+	value, err := strconv.ParseBool(s)
+	if err != nil {
+		return err
+	}
+
+	v.value.Set(v.mask, value)
+
+	return nil
+}
+
+// IsBoolFlag makes `-name` equivalent to `-name=true`.
+func ({{.TypeName}}BoolFlag) IsBoolFlag() bool { return true }

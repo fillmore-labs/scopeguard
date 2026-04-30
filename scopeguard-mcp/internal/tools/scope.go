@@ -28,7 +28,8 @@ import (
 	"fillmore-labs.com/scopeguard/scopeguard-mcp/internal/mcputil"
 )
 
-func addScopeTool(server *mcp.Server, s *mcputil.ServerState) {
+// AddScopeTool registers the "scope" tool.
+func AddScopeTool(server *mcp.Server, s *mcputil.ServerState) {
 	tool := &mcp.Tool{
 		Name:  guidance.ScopeToolName,
 		Title: "Scope",
@@ -93,10 +94,10 @@ func (c ScopeContext) Scope(ctx context.Context, req *mcp.CallToolRequest, args 
 		Behaviors: config.CombineDeclarations,
 		Functions: args.Functions,
 		MaxLines:  maxLines,
-		Filters:   config.NewFilters(filter, config.FilterAll), // We want all fixes, either to apply or preview
+		Filters:   config.NewFilters(filter, config.All), // We want all fixes, either to apply or preview
 	}
 
-	a := r.New()
+	a := r.Analyzer()
 
 	graph, err := engine.AnalyzePackages(ctx, args.Args, a)
 	if err != nil {

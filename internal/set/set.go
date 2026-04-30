@@ -26,19 +26,19 @@ import (
 // Set is a collection of unique elements of type T.
 type Set[T comparable] map[T]struct{}
 
-// New returns a new set of type T containing elems.
-func New[T comparable](elems ...T) Set[T] {
+// Of returns a new set of type T containing elems.
+func Of[T comparable](elems ...T) Set[T] {
 	s := make(Set[T], len(elems))
 	for _, e := range elems {
-		s.Add(e)
+		s.Insert(e)
 	}
 
 	return s
 }
 
-// Add adds the element t to the set s.
+// Insert adds the element t to the set s.
 // If t is already in s, it does nothing.
-func (s Set[T]) Add(t T) {
+func (s Set[T]) Insert(t T) {
 	s[t] = struct{}{}
 }
 

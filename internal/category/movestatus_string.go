@@ -19,9 +19,9 @@ func _() {
 	_ = x[MaxMoveStatus-8]
 }
 
-const _MoveStatus_name = "movinitypgendecshwtchxstMaxMoveStatus"
+const _MoveStatus_name = "movinitypgendecshwtchxstMAX"
 
-var _MoveStatus_index = [...]uint8{0, 3, 6, 9, 12, 15, 18, 21, 24, 37}
+var _MoveStatus_index = [...]uint8{0, 3, 6, 9, 12, 15, 18, 21, 24, 27}
 
 func (i MoveStatus) String() string {
 	idx := int(i) - 0

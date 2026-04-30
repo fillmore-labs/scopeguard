@@ -40,44 +40,26 @@ type DeclarationNode struct {
 }
 
 // Flags indicate how a variable is used.
+//
+//go:generate go tool bitmask -type Flags -output=types_bitmask.go
 type Flags uint8
 
 const (
 	// UsageUsed indicates the variable declaration is used.
-	UsageUsed Flags = 1 << iota
+	UsageUsed Flags = 1 << iota // Used
 
 	// UsageTypeChange indicates the variable redeclaration implies a type change.
-	UsageTypeChange
+	UsageTypeChange // TypeChange
 
 	// UsageUntypedNil indicates the variable redeclaration is assigned to untyped nil.
-	UsageUntypedNil
+	UsageUntypedNil // UntypedNil
 
 	// UsageNone indicates the variable redeclaration is unused.
-	UsageNone Flags = 0
+	UsageNone Flags = 0 // Unused
 
 	// UsageUsedAndTypeChange represents a combination of [UsageUsed] and [UsageTypeChange] flags.
 	UsageUsedAndTypeChange = UsageUsed | UsageTypeChange
 )
-
-// Used indicates the variable declaration is used.
-func (f Flags) Used() bool {
-	return f&UsageUsed != 0
-}
-
-// TypeChange indicates the variable redeclaration implies a type change.
-func (f Flags) TypeChange() bool {
-	return f&UsageTypeChange != 0
-}
-
-// UntypedNil indicates the variable redeclaration is assigned to untyped nil.
-func (f Flags) UntypedNil() bool {
-	return f&UsageUntypedNil != 0
-}
-
-// UsedAndTypeChange represents a combination of [Flags.Used] and [Flags.TypeChange].
-func (f Flags) UsedAndTypeChange() bool {
-	return f&UsageUsedAndTypeChange == UsageUsedAndTypeChange
-}
 
 // Result contains the scope analysis for all variable declarations from stage 1.
 type Result struct {
@@ -105,13 +87,6 @@ func (u Result) AllDeclarations() iter.Seq2[*types.Var, []DeclarationNode] {
 
 // Diagnostics contains findings from the usage analysis stage.
 type Diagnostics struct {
-	Shadows []ShadowUse
-	Nested  []NestedAssign
+	Shadows []check.ShadowUse
+	Nested  []check.NestedAssign
 }
-
-type (
-	// ShadowUse contains information about a variable use after previously shadowed.
-	ShadowUse = check.ShadowUse
-	// NestedAssign contains information about a nested variable assign.
-	NestedAssign = check.NestedAssign
-)

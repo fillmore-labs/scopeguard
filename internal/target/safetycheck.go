@@ -62,7 +62,7 @@ func usedIdentifierShadowed(info *types.Info, decl inspector.Cursor, declScope, 
 	start, end := declNode.Pos(), declNode.End()
 
 	// Track which identifiers we've already checked to avoid redundant work
-	checked := set.New[string]()
+	checked := set.Of[string]()
 
 	// Traverse all identifiers used in the declaration
 	for c := range decl.Preorder((*ast.Ident)(nil)) {
@@ -117,7 +117,7 @@ func usedIdentifierShadowed(info *types.Info, decl inspector.Cursor, declScope, 
 			return true
 		}
 
-		checked.Add(id.Name)
+		checked.Insert(id.Name)
 	}
 
 	return false

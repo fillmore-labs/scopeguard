@@ -16,9 +16,7 @@
 
 package category
 
-import (
-	"fillmore-labs.com/scopeguard/internal/config"
-)
+import "fillmore-labs.com/scopeguard/internal/config"
 
 // MoveStatus indicates whether a declaration can be moved and why.
 //
@@ -81,7 +79,7 @@ func (s MoveStatus) Safety() config.Safety {
 		return config.Unsafe
 
 	default:
-		return config.Unknown
+		return config.Nothing
 	}
 }
 

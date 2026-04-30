@@ -100,8 +100,8 @@ func checkPackageErrors(pkgs []*packages.Package) error {
 	var errs []error
 
 	for _, pkg := range pkgs {
-		for _, pkgErr := range pkg.Errors {
-			errs = append(errs, fmt.Errorf("%s: %w", pkg.PkgPath, pkgErr))
+		for _, err := range pkg.Errors {
+			errs = append(errs, fmt.Errorf("%s: %w", pkg.PkgPath, err))
 		}
 	}
 
@@ -139,7 +139,7 @@ func checkMatched(graph *checker.Graph, functions []typeutil.LocalFuncName) erro
 }
 
 func collectProcessed(graph *checker.Graph) (set.Set[typeutil.LocalFuncName], error) {
-	matched := set.New[typeutil.LocalFuncName]()
+	matched := set.Of[typeutil.LocalFuncName]()
 
 	for _, act := range graph.Roots {
 		if err := act.Err; err != nil {
@@ -148,7 +148,7 @@ func collectProcessed(graph *checker.Graph) (set.Set[typeutil.LocalFuncName], er
 
 		res := act.Result.(run.Result)
 		for _, p := range res.Processed {
-			matched.Add(p.Name)
+			matched.Insert(p.Name)
 		}
 	}
 

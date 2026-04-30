@@ -16,41 +16,24 @@
 
 package config
 
-// DefaultBehavior returns the default behavior settings.
-func DefaultBehavior() Behaviors {
-	return FirstUseOnly | CombineDeclarations | RenameVariables
-}
-
 // Behaviors is representing a set of configurable binary flags for behavior control.
+//
+//go:generate go tool bitmask -boolflag -type Behaviors
 type Behaviors uint8
 
 const (
 	// IncludeGenerated specifies whether to include analysis of generated files.
-	IncludeGenerated Behaviors = 1 << iota
+	IncludeGenerated Behaviors = 1 << iota // generated
 
 	// FirstUseOnly specifies whether only the first use of a variable after being shadowed should be reported.
-	FirstUseOnly
+	FirstUseOnly // first-only
 
 	// CombineDeclarations determines whether to combine declarations when moving to init statements.
-	CombineDeclarations
+	CombineDeclarations // combine
 
 	// RenameVariables indicates that shadowed variables should be renamed.
-	RenameVariables
+	RenameVariables // rename
+
+	// DefaultBehaviors are the default behaviors.
+	DefaultBehaviors = FirstUseOnly | CombineDeclarations | RenameVariables
 )
-
-var _behavior = [...]string{
-	"generated",
-	"first-only",
-	"combine",
-	"rename",
-}
-
-func (b Behaviors) String() string { return toString(b, _behavior[:]) }
-
-// Set adjusts the bitmask by enabling or disabling the specified option.
-func (b *Behaviors) Set(behavior Behaviors, value bool) {
-	set(b, behavior, value)
-}
-
-// Enabled checks if the specified option is enabled in the current bitmask.
-func (b Behaviors) Enabled(behavior Behaviors) bool { return enabled(b, behavior) }

@@ -37,7 +37,7 @@ type Info struct {
 func InfoOf(category string) *Info {
 	info, ok := infoByCategory[category]
 	if !ok {
-		return &Info{Issue: IssueUnknown, Reason: "Internal error: unknown category " + strconv.Quote(category), Safety: config.Unknown}
+		return &Info{Reason: "Internal error: unknown category " + strconv.Quote(category), Safety: config.Nothing}
 	}
 
 	return info
