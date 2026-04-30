@@ -35,12 +35,12 @@ func TestFilterPhrase(t *testing.T) {
 	}{
 		{
 			name: "default tiers",
-			f:    engine.Facts{Filter: config.FilterAll},
+			f:    engine.Facts{Filter: config.All},
 			want: "",
 		},
 		{
 			name: "safe only",
-			f:    engine.Facts{Filter: config.FilterSafe},
+			f:    engine.Facts{Filter: config.Safe},
 			want: `\(safety filters: safe\)`,
 		},
 	}

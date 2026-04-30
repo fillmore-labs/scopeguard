@@ -46,8 +46,8 @@ type Options struct {
 func DefaultOptions() *Options {
 	return &Options{
 		MaxLines:  -1,
-		Analyzers: config.DefaultAnalyzers(),
-		Behaviors: config.DefaultBehavior(),
-		Filters:   config.NewFilters(config.FilterAll, config.FilterSafe),
+		Analyzers: config.DefaultAnalyzers,
+		Behaviors: config.DefaultBehaviors,
+		Filters:   config.NewFilters(config.All, config.Safe),
 	}
 }

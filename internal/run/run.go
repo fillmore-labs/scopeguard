@@ -44,8 +44,8 @@ import (
 // Requires field is not properly set.
 var ErrResultMissing = errors.New("analyzer result missing")
 
-// Run executes the scopeguard analyzer's pipeline.
-func (o *Options) Run(p *analysis.Pass) (any, error) {
+// run executes the scopeguard analyzer's pipeline.
+func (o *Options) run(p *analysis.Pass) (any, error) {
 	in, ok := p.ResultOf[inspect.Analyzer].(*inspector.Inspector)
 	if !ok {
 		return nil, fmt.Errorf("scopeguard: %s %w", inspect.Analyzer.Name, ErrResultMissing)
@@ -80,12 +80,12 @@ func (o *Options) Run(p *analysis.Pass) (any, error) {
 		}
 
 		// Skip generated files
-		if currentFile.Generated() && !o.Behaviors.Enabled(config.IncludeGenerated) {
+		if currentFile.Generated() && !o.Behaviors.Has(config.IncludeGenerated) {
 			continue
 		}
 
 		// Skip files with nolint comment
-		if astutil.CommentGroupHasNoLint(file.Doc) {
+		if astutil.HasNoLint(file.Doc, p.Analyzer.Name) {
 			continue
 		}
 
@@ -109,7 +109,7 @@ func (o *Options) Run(p *analysis.Pass) (any, error) {
 				}
 			} else {
 				// Skip functions with nolint comment
-				if astutil.CommentGroupHasNoLint(f.Doc) {
+				if astutil.HasNoLint(f.Doc, p.Analyzer.Name) {
 					continue
 				}
 			}
@@ -140,7 +140,7 @@ func (o *Options) Run(p *analysis.Pass) (any, error) {
 				Diagnostics: usageDiagnostics,
 			}
 
-			rename := o.Behaviors.Enabled(config.RenameVariables) && !diagnostics.Generated()
+			rename := o.Behaviors.Has(config.RenameVariables) && !diagnostics.Generated()
 			renames := o.Renames[fn]
 
 			diagnostics.Process(ctx, p, c, o.Filters, renames, rename)

@@ -90,6 +90,12 @@ func TestAnalyzer(t *testing.T) {
 			options: WithUnsafe(true),
 			fix:     true,
 		},
+		{
+			name:    "Inert",
+			dir:     "./inert",
+			options: nil,
+			fix:     true,
+		},
 	}
 
 	for _, tt := range tests {

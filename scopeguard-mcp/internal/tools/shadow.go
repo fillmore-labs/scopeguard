@@ -29,7 +29,8 @@ import (
 	"fillmore-labs.com/scopeguard/scopeguard-mcp/internal/mcputil"
 )
 
-func addShadowTool(server *mcp.Server, s *mcputil.ServerState) {
+// AddShadowTool registers the "shadow" tool.
+func AddShadowTool(server *mcp.Server, s *mcputil.ServerState) {
 	tool := &mcp.Tool{
 		Name:        guidance.ShadowToolName,
 		Title:       "Shadow",
@@ -78,7 +79,7 @@ type ShadowEdit struct {
 
 // Shadow is an MCP tool to rename shadowed variables.
 func (c ShadowContext) Shadow(ctx context.Context, req *mcp.CallToolRequest, args ShadowArgs) (*ShadowResult, []mcp.Content, error) {
-	filter := config.FilterAll // renames are safe
+	filter := config.All // renames are safe
 
 	behaviors := config.FirstUseOnly | config.RenameVariables
 	processMode := engine.ProcessPreview
@@ -94,10 +95,10 @@ func (c ShadowContext) Shadow(ctx context.Context, req *mcp.CallToolRequest, arg
 		Functions: args.Functions,
 		Renames:   args.Renames,
 		MaxLines:  maxLines,
-		Filters:   config.NewFilters(filter, config.FilterAll), // We want all fixes, either to apply or preview
+		Filters:   config.NewFilters(filter, config.All), // We want all fixes, either to apply or preview
 	}
 
-	a := r.New()
+	a := r.Analyzer()
 
 	graph, err := engine.AnalyzePackages(ctx, args.Args, a)
 	if err != nil {

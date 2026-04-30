@@ -17,11 +17,33 @@
 package cantreturn
 
 import (
+	"github.com/golang/glog"
 	"github.com/sirupsen/logrus"
 	"go.uber.org/zap"
 	"k8s.io/klog"
 	klog2 "k8s.io/klog/v2"
 )
+
+func gLog() {
+	glog.Exit()                         // want "Can't return"
+	glog.Exitf("")                      // want "Can't return"
+	glog.Exitln()                       // want "Can't return"
+	glog.ExitDepth(0)                   // want "Can't return"
+	glog.ExitDepthf(0, "")              // want "Can't return"
+	glog.ExitContext(nil)               // want "Can't return"
+	glog.ExitContextf(nil, "")          // want "Can't return"
+	glog.ExitContextDepth(nil, 0)       // want "Can't return"
+	glog.ExitContextDepthf(nil, 0, "")  // want "Can't return"
+	glog.Fatal()                        // want "Can't return"
+	glog.Fatalf("")                     // want "Can't return"
+	glog.Fatalln()                      // want "Can't return"
+	glog.FatalDepth(0)                  // want "Can't return"
+	glog.FatalDepthf(0, "")             // want "Can't return"
+	glog.FatalContext(nil)              // want "Can't return"
+	glog.FatalContextf(nil, "")         // want "Can't return"
+	glog.FatalContextDepth(nil, 0)      // want "Can't return"
+	glog.FatalContextDepthf(nil, 0, "") // want "Can't return"
+}
 
 func zapLog() {
 	log := zap.NewNop()

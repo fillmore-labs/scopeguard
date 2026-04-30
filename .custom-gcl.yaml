@@ -1,5 +1,5 @@
 ---
-version: v2.11.4
+version: v2.12.2
 
 name: golangci-lint
 destination: .
@@ -10,4 +10,4 @@ plugins:
     path: .
   - module: fillmore-labs.com/errortype
     import: fillmore-labs.com/errortype/gclplugin
-    version: v0.0.10
+    version: v0.0.11

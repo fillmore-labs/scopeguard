@@ -33,16 +33,26 @@ const (
 	url  = "https://pkg.go.dev/fillmore-labs.com/scopeguard"
 )
 
-// New returns a configured scopeguard analyzer.
-func (o *Options) New() *analysis.Analyzer {
-	return &analysis.Analyzer{
+// Analyzer returns a configured scopeguard analyzer.
+func (o *Options) Analyzer() *analysis.Analyzer {
+	a := &analysis.Analyzer{
 		Name:       name,
 		Doc:        doc,
 		URL:        url,
-		Run:        o.Run,
+		Run:        o.run,
 		Requires:   []*analysis.Analyzer{inspect.Analyzer},
 		ResultType: reflect.TypeFor[Result](),
 	}
+
+	o.registerFlags(&a.Flags)
+
+	return a
+}
+
+// Result is the internal analyzer result.
+type Result struct {
+	// Processed contains the matched functions when a filter is set.
+	Processed []Function
 }
 
 // Function is the range of a function or method with fixes in the source code.
@@ -50,10 +60,4 @@ type Function struct {
 	Name typeutil.LocalFuncName
 	Pos  token.Pos
 	End  token.Pos
-}
-
-// Result is the internal analyzer result.
-type Result struct {
-	// Processed contains the matched functions when a filter is set.
-	Processed []Function
 }

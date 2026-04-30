@@ -17,7 +17,6 @@
 package mcputil
 
 import (
-	"context"
 	"fmt"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -90,25 +89,4 @@ func (b *ResultBuilder) ExtraContent(session *mcp.ServerSession) []mcp.Content {
 	b.state.commitStore(session, b.diffstore)
 
 	return b.content
-}
-
-// DiffStore provides the embedded resources on request.
-//
-// [MCP Spec]: “Servers that use embedded resources SHOULD implement the resources capability”
-//
-// [MCP Spec]: https://modelcontextprotocol.io/specification/2025-11-25/server/tools#embedded-resources
-func (s *ServerState) DiffStore(_ context.Context, req *mcp.ReadResourceRequest) (*mcp.ReadResourceResult, error) {
-	store, ok := s.getStore(req.Session)
-	if !ok {
-		return nil, mcp.ResourceNotFoundError(req.Params.URI)
-	}
-
-	diff, ok := store.diffs[req.Params.URI]
-	if !ok {
-		return nil, mcp.ResourceNotFoundError(req.Params.URI)
-	}
-
-	return &mcp.ReadResourceResult{
-		Contents: []*mcp.ResourceContents{diff2Resource(diff, req.Params.URI)},
-	}, nil
 }

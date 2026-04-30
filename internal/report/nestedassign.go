@@ -26,11 +26,11 @@ import (
 
 	"fillmore-labs.com/scopeguard/internal/astutil"
 	"fillmore-labs.com/scopeguard/internal/category"
-	"fillmore-labs.com/scopeguard/internal/usage"
+	"fillmore-labs.com/scopeguard/internal/usage/check"
 )
 
 // reportNestedAssigned emits diagnostics for nested assigns of variables.
-func reportNestedAssigned(ctx context.Context, p *analysis.Pass, in *inspector.Inspector, currentFile astutil.CurrentFile, nested []usage.NestedAssign) {
+func reportNestedAssigned(ctx context.Context, p *analysis.Pass, in *inspector.Inspector, currentFile astutil.CurrentFile, nested []check.NestedAssign) {
 	if len(nested) == 0 {
 		return
 	}

@@ -100,8 +100,8 @@ func checkPackageErrors(pkgs []*packages.Package) error {
 	var errs []error
 
 	for _, pkg := range pkgs {
-		for _, pkgErr := range pkg.Errors {
-			errs = append(errs, fmt.Errorf("%s: %w", pkg.PkgPath, pkgErr))
+		for _, err := range pkg.Errors {
+			errs = append(errs, fmt.Errorf("%s: %w", pkg.PkgPath, err))
 		}
 	}
 

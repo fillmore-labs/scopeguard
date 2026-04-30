@@ -27,7 +27,6 @@ import (
 	"golang.org/x/tools/go/ast/inspector"
 
 	"fillmore-labs.com/scopeguard/internal/astutil"
-	"fillmore-labs.com/scopeguard/internal/reachability"
 	"fillmore-labs.com/scopeguard/internal/scope"
 	"fillmore-labs.com/scopeguard/internal/usage/check"
 )
@@ -74,7 +73,8 @@ func (c *collector) result() (Result, Diagnostics) {
 	return Result{
 			scopeRanges:  c.scopeRanges,
 			declarations: c.declarations,
-		}, Diagnostics{
+		},
+		Diagnostics{
 			Shadows: c.UsedAfterShadow(),
 			Nested:  c.NestedAssigned(),
 		}
@@ -89,11 +89,6 @@ func (c *collector) result() (Result, Diagnostics) {
 // which determines if the declaration can be moved to a narrower scope.
 func (c *collector) handleFunc(ctx context.Context, body inspector.Cursor, recv *ast.FieldList, fun *ast.FuncType) {
 	bodyNode := body.Node().(*ast.BlockStmt)
-
-	oldgraph := c.Graph
-	if c.ShadowCheckerEnabled() {
-		c.Graph = reachability.NewGraph(ctx, c.TypesInfo, recv, fun, bodyNode, true)
-	}
 
 	// Processes function parameters and results, recording their declarations.
 	params, results := fun.Params, fun.Results
@@ -216,6 +211,4 @@ func (c *collector) handleFunc(ctx context.Context, body inspector.Cursor, recv 
 
 		return true
 	})
-
-	c.Graph = oldgraph
 }

@@ -1,12 +1,12 @@
 # ScopeGuard
 
 [![Go Reference](https://pkg.go.dev/badge/fillmore-labs.com/scopeguard.svg)](https://pkg.go.dev/fillmore-labs.com/scopeguard)
-[![Test](https://github.com/fillmore-labs/scopeguard/actions/workflows/test.yaml/badge.svg?branch=main)](https://github.com/fillmore-labs/scopeguard/actions/workflows/test.yaml?query=branch%3Amain)
-[![CodeQL](https://github.com/fillmore-labs/scopeguard/actions/workflows/github-code-scanning/codeql/badge.svg?branch=main)](https://github.com/fillmore-labs/scopeguard/actions/workflows/github-code-scanning/codeql?query=branch%3Amain)
-[![Coverage](https://codecov.io/gh/fillmore-labs/scopeguard/branch/main/graph/badge.svg?token=D7ZKQQKAIG)](https://codecov.io/gh/fillmore-labs/scopeguard/tree/main)
+[![Test](https://github.com/fillmore-labs/scopeguard/actions/workflows/test.yaml/badge.svg?branch=dev)](https://github.com/fillmore-labs/scopeguard/actions/workflows/test.yaml?query=branch%3Adev)
+[![CodeQL](https://github.com/fillmore-labs/scopeguard/actions/workflows/github-code-scanning/codeql/badge.svg?branch=dev)](https://github.com/fillmore-labs/scopeguard/actions/workflows/github-code-scanning/codeql?query=branch%3Adev)
+[![Coverage](https://codecov.io/gh/fillmore-labs/scopeguard/branch/dev/graph/badge.svg?token=D7ZKQQKAIG)](https://codecov.io/gh/fillmore-labs/scopeguard/tree/dev)
 [![Go Report Card](https://goreportcard.com/badge/fillmore-labs.com/scopeguard)](https://goreportcard.com/report/fillmore-labs.com/scopeguard)
-[![Codeberg CI](https://ci.codeberg.org/api/badges/15593/status.svg?branch=main)](https://ci.codeberg.org/repos/15593/branches/main)
-[![License](https://img.shields.io/github/license/fillmore-labs/scopeguard)](https://www.apache.org/licenses/LICENSE-2.0)
+[![Codeberg CI](https://ci.codeberg.org/api/badges/15593/status.svg?branch=dev)](https://ci.codeberg.org/repos/15593/branches/dev)
+[![License](https://img.shields.io/badge/license-Apache--2.0-green)](https://www.apache.org/licenses/LICENSE-2.0)
 
 ScopeGuard is a Go static analyzer that identifies variables with unnecessarily wide scopes and suggests moving them
 closer to their usage for cleaner, more maintainable code.
@@ -572,7 +572,7 @@ Add a `.custom-gcl.yaml` file to your project root:
 
 ```yaml
 ---
-version: v2.11.4
+version: v2.12.2
 
 name: golangci-lint
 destination: .
@@ -580,7 +580,7 @@ destination: .
 plugins:
   - module: fillmore-labs.com/scopeguard
     import: fillmore-labs.com/scopeguard/gclplugin
-    version: v0.0.7
+    version: v0.0.8
 ```
 
 Then run `golangci-lint custom` from your project root. This produces a custom `golangci-lint` executable that can be
@@ -639,10 +639,10 @@ You can then add it to [Claude Code](https://code.claude.com/docs/en/mcp#option-
 claude mcp add --transport stdio --scope project ScopeGuard -- scopeguard-mcp
 ```
 
-[Gemini](https://geminicli.com/docs/tools/mcp-server/#adding-an-stdio-server):
+[Codex](https://developers.openai.com/codex/mcp#add-an-mcp-server):
 
 ```shell
-gemini mcp add --transport stdio --scope project ScopeGuard scopeguard-mcp
+codex mcp add ScopeGuard -- scopeguard-mcp
 ```
 
 or adding

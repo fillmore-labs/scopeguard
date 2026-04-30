@@ -1,0 +1,89 @@
+
+// Set adjusts the bitmask by enabling or disabling the specified mask.
+func ({{.Receiver}} *{{.TypeName}}) Set(mask {{.TypeName}}, value bool) {
+	if value {
+		*{{.Receiver}} |= mask
+	} else {
+		*{{.Receiver}} &^= mask
+	}
+}
+
+// Has reports whether every bit in mask is set on the receiver. With a multi-bit mask
+// it is a strict containment check; calling Has(0) always returns true.
+func ({{.Receiver}} {{.TypeName}}) Has(mask {{.TypeName}}) bool {
+	return {{.Receiver}}&mask == mask
+}
+
+// String returns the textual representation of {{.TypeName}}.
+func ({{.Receiver}} {{.TypeName}}) String() string {
+{{- if .Aliases}}
+	switch {{$.Receiver}} {
+{{- range .Aliases}}
+	case {{.Const}}:
+		return {{printf "%q" .Name}}
+{{- end}}
+	}
+{{end}}
+	txt, err := bitmask.FormatText(uint64({{.Receiver}}), _{{.TypeName}}Names[:]) // #nosec G115 -- validated during generation.
+	if err != nil {
+		return "{{.TypeName}}: " + err.Error()
+	}
+
+	return txt
+}
+
+// MarshalText implements [encoding.TextMarshaler].
+func ({{.Receiver}} {{.TypeName}}) MarshalText() ([]byte, error) {
+	return {{.Receiver}}.AppendText(nil)
+}
+
+// AppendText implements [encoding.TextAppender].
+func ({{.Receiver}} {{.TypeName}}) AppendText(buf []byte) ([]byte, error) {
+{{- if .Aliases}}
+	switch {{.Receiver}} {
+{{- range .Aliases}}
+	case {{.Const}}:
+		return append(buf, {{printf "%q" .Name}}...), nil
+{{- end}}
+	}
+{{end}}
+	return bitmask.AppendText(buf, uint64({{.Receiver}}), _{{.TypeName}}Names[:]) // #nosec G115 -- validated during generation.
+}
+
+// UnmarshalText implements [encoding.TextUnmarshaler].
+// It parses a comma- or whitespace-separated list of names.
+func ({{.Receiver}} *{{.TypeName}}) UnmarshalText(text []byte) error {
+	val, err := bitmask.UnmarshalText(text, _{{.TypeName}}ParseName)
+	if err != nil {
+		return fmt.Errorf("{{.TypeName}}: %w", err)
+	}
+
+	*{{.Receiver}} = {{.TypeName}}(val) // #nosec G115 -- validated during generation.
+
+	return nil
+}
+
+var _{{.TypeName}}Names = [...]string{
+{{- range .Bits}}
+	{{printf "%q" .Name}},
+{{- end}}
+}
+
+// _{{.TypeName}}ParseName resolves "name" to its bit value, reporting
+// whether it was recognized.
+func _{{.TypeName}}ParseName(name string) (uint64, bool) {
+	switch name {
+{{- range .Aliases}}
+	case {{printf "%q" .Name}}:
+		return uint64({{.Const}}), true
+
+{{- end}}
+{{- range .Bits}}
+	case {{printf "%q" .Name}}:
+		return uint64({{.Const}}), true
+
+{{- end}}
+	default:
+		return 0, false
+	}
+}

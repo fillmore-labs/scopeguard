@@ -17,6 +17,7 @@
 package check
 
 import (
+	"context"
 	"go/ast"
 	"go/token"
 	"go/types"
@@ -35,39 +36,13 @@ type ShadowChecker struct {
 	shadowed map[*types.Var]shadowInfo
 
 	// Control-flow graph to test reachability
-	*reachability.Graph
+	graph *reachability.Graph
 
 	// usedAfterShadow collects usage of variables used after previously shadowed.
 	usedAfterShadow []ShadowUse
 
 	// firstUseOnly indicates whether only the first use of a variable after being shadowed should be recorded.
 	firstUseOnly bool
-}
-
-// NewShadowChecker creates a new ShadowChecker instance.
-//
-// If enabled is false, shadow tracking is disabled, and the checker is a no-op that uses minimal memory.
-func NewShadowChecker(enabled, firstUseOnly bool) ShadowChecker {
-	var sc ShadowChecker
-
-	if enabled {
-		sc.shadowed = make(map[*types.Var]shadowInfo)
-		sc.firstUseOnly = firstUseOnly
-	}
-
-	return sc
-}
-
-// ShadowCheckerEnabled reports whether the shadow checker is enabled.
-func (sc *ShadowChecker) ShadowCheckerEnabled() bool {
-	return sc.shadowed != nil
-}
-
-// UsedAfterShadow returns the list of variables that were used after being shadowed.
-func (sc *ShadowChecker) UsedAfterShadow() []ShadowUse {
-	slices.SortFunc(sc.usedAfterShadow, func(a, b ShadowUse) int { return int(a.Use - b.Use) })
-
-	return sc.usedAfterShadow
 }
 
 // shadowInfo tracks when an outer variable is shadowed by an inner declaration.
@@ -94,6 +69,29 @@ func (s shadowInfo) shadowing(pos token.Pos) bool {
 	return pos >= s.start && (!s.end.IsValid() || pos < s.end) && s.ignore != pos
 }
 
+// NewShadowChecker creates a new ShadowChecker instance.
+//
+// If enabled is false, shadow tracking is disabled, and the checker is a no-op that uses minimal memory.
+func NewShadowChecker(ctx context.Context, info *types.Info, f *ast.FuncDecl, enabled, firstUseOnly bool) ShadowChecker {
+	var sc ShadowChecker
+
+	if enabled {
+		sc.graph = reachability.NewGraph(ctx, info, f.Recv, f.Type, f.Body, true)
+
+		sc.shadowed = make(map[*types.Var]shadowInfo)
+		sc.firstUseOnly = firstUseOnly
+	}
+
+	return sc
+}
+
+// UsedAfterShadow returns the list of variables that were used after being shadowed.
+func (sc *ShadowChecker) UsedAfterShadow() []ShadowUse {
+	slices.SortFunc(sc.usedAfterShadow, func(a, b ShadowUse) int { return int(a.Use - b.Use) })
+
+	return sc.usedAfterShadow
+}
+
 // CheckDeclarationShadowing checks if the variable shadows another in parent scopes and records it.
 func (sc *ShadowChecker) CheckDeclarationShadowing(scopes scope.UsageScope, variable *types.Var, shadowPos token.Pos) {
 	if sc.shadowed == nil {
@@ -114,13 +112,13 @@ func (sc *ShadowChecker) CheckUseAfterShadowed(variable *types.Var, namePos toke
 	}
 
 	// Is this usage reachable from the shadowing?
-	if reachable, ok := sc.Reachable(s.shadowPos, namePos); ok && !reachable {
+	if reachable, ok := sc.graph.Reachable(s.shadowPos, namePos); ok && !reachable {
 		return
 	}
 
 	// Do we have a reachable reassigning in a subscope?
 	for _, r := range s.reassigns {
-		if reachable, ok := sc.Reachable(r-1, namePos); ok && reachable {
+		if reachable, ok := sc.graph.Reachable(r-1, namePos); ok && reachable {
 			return
 		}
 	}
@@ -171,7 +169,7 @@ func (sc *ShadowChecker) UpdateShadowsWithReachability(v *types.Var, id *ast.Ide
 
 	case !s.end.IsValid() || assignmentDone < s.end:
 		s.ignore = id.NamePos
-		if reachable, ok := sc.Reachable(s.shadowPos, id.NamePos); !ok || reachable {
+		if reachable, ok := sc.graph.Reachable(s.shadowPos, id.NamePos); !ok || reachable {
 			// We record the reassignment when reachable.
 			s.reassigns = append(s.reassigns, assignmentDone)
 		}

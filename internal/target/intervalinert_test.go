@@ -178,6 +178,27 @@ func TestIntervalInert(t *testing.T) {
 			want:     true,
 			version:  "go1.26",
 		},
+
+		// Embedded fields
+		{
+			name:     "embedded_field",
+			src:      `type B struct{ v int }; type A struct{ B }; _ = A{B: B{v: 1}}`,
+			interval: func(b *ast.BlockStmt) (start, end token.Pos) { return b.List[0].Pos(), b.List[2].End() },
+			want:     true,
+		},
+		{
+			name:     "embedded_field_with_call",
+			src:      `type B struct{ v int }; type A struct{ B }; _ = A{B: B{v: func() int { return 1 }()}}`,
+			interval: func(b *ast.BlockStmt) (start, end token.Pos) { return b.List[0].Pos(), b.List[2].End() },
+			want:     false,
+		},
+		{
+			name:     "anonymous_embedded_field",
+			src:      `type B struct{ v int }; type A struct{ B }; _ = A{v: 1}`,
+			interval: func(b *ast.BlockStmt) (start, end token.Pos) { return b.List[0].Pos(), b.List[2].End() },
+			want:     true,
+			version:  "go1.27",
+		},
 	}
 
 	for _, tt := range tests {

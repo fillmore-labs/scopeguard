@@ -42,7 +42,7 @@ func TestScopeMessage(t *testing.T) {
 			name: "fixes available not applied",
 			f: engine.Facts{
 				Counts: engine.Counts{Total: 5, Dropped: 0, Applied: 0},
-				Filter: config.FilterAll,
+				Filter: config.All,
 			},
 			want: `^5 fix\(es\) available \(not applied\)$`,
 		},
@@ -50,7 +50,7 @@ func TestScopeMessage(t *testing.T) {
 			name: "fixes applied",
 			f: engine.Facts{
 				Counts: engine.Counts{Total: 5, Dropped: 0, Applied: 5},
-				Filter: config.FilterAll,
+				Filter: config.All,
 			},
 			want: `^5 fix\(es\) applied$`,
 		},
@@ -58,7 +58,7 @@ func TestScopeMessage(t *testing.T) {
 			name: "partial applied",
 			f: engine.Facts{
 				Counts: engine.Counts{Total: 5, Dropped: 0, Applied: 2},
-				Filter: config.FilterAll,
+				Filter: config.All,
 			},
 			want: `^2 fix\(es\) applied; 3 fix\(es\) available \(not applied\)$`,
 		},
@@ -71,7 +71,7 @@ func TestScopeMessage(t *testing.T) {
 					Applied:  0,
 					BySafety: map[config.Safety]int{config.Breaking: 1},
 				},
-				Filter: config.FilterAll,
+				Filter: config.All,
 			},
 			want: `^2 fix\(es\) available \(not applied\); 1 breaking fix\(es\): treat diffs as scaffold \(see help topic 'breaking'\)$`,
 		},

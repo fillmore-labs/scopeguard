@@ -103,7 +103,7 @@ func (c CurrentFile) NoLintComment(pos token.Pos) bool {
 		return false // not on this line
 	}
 
-	return CommentHasNoLint(comment)
+	return IsNoLintComment(comment, scopeguard)
 }
 
 var nolintPattern = regexp.MustCompile(`^//\s*nolint:([a-zA-Z0-9,_-]+)`)

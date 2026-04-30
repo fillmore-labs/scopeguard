@@ -85,10 +85,10 @@ func IntervalInert(info *types.Info, parent inspector.Cursor, absorbedDecls []as
 		(*ast.BadStmt)(nil),
 		(*ast.BranchStmt)(nil),
 		(*ast.CaseClause)(nil),
+		(*ast.DeclStmt)(nil),
 		(*ast.DeferStmt)(nil),
 		(*ast.ExprStmt)(nil),
 		(*ast.ForStmt)(nil),
-		(*ast.DeclStmt)(nil),
 		(*ast.GoStmt)(nil),
 		(*ast.IfStmt)(nil),
 		(*ast.IncDecStmt)(nil),
@@ -155,17 +155,27 @@ func InertStmt(info *types.Info, node ast.Node) bool {
 // 2. All identifiers on the LHS are *new* definitions (no reassignments).
 // 3. All expressions on the RHS are inert (constants or safe built-ins).
 func inertShortDecl(info *types.Info, stmt *ast.AssignStmt) bool {
-	if stmt.Tok != token.DEFINE {
-		return false
-	}
-
-	for id := range astutil.AllAssigned(stmt) {
-		// Ensure the identifier defines a new object.
-		// If it's not in Defs[id], it means it's a reassignment of an existing variable,
-		// which is a side effect we must avoid.
-		if _, ok := info.Defs[id]; !ok {
-			return false
+	switch stmt.Tok {
+	case token.DEFINE:
+		for id := range astutil.AllAssigned(stmt) {
+			// Ensure the identifier defines a new object.
+			// If it's not in Defs[id], it means it's a reassignment of an existing variable,
+			// which is a side effect we must avoid.
+			if _, ok := info.Defs[id]; !ok {
+				return false
+			}
 		}
+
+	case token.ASSIGN:
+		// Are all results ignored?
+		for _, expr := range stmt.Lhs {
+			if id, ok := ast.Unparen(expr).(*ast.Ident); !ok || id.Name != "_" {
+				return false
+			}
+		}
+
+	default:
+		return false
 	}
 
 	for _, expr := range stmt.Rhs {
@@ -208,9 +218,9 @@ func inertExpr(info *types.Info, expr ast.Expr) bool {
 
 unpack:
 	switch ex := expr.(type) {
-	case *ast.ParenExpr:
-		expr = ex.X
-		goto unpack
+	// keep-sorted start newline_separated=yes
+	case *ast.BasicLit:
+		return true
 
 	case *ast.CallExpr:
 		// Check for new(...), make(...)
@@ -226,10 +236,6 @@ unpack:
 
 		return true
 
-	case *ast.UnaryExpr:
-		expr = ex.X
-		goto unpack
-
 	case *ast.CompositeLit:
 		for _, e := range ex.Elts {
 			if !inertExpr(info, e) {
@@ -239,8 +245,21 @@ unpack:
 
 		return true
 
+	case *ast.KeyValueExpr:
+		expr = ex.Value
+		goto unpack
+
+	case *ast.ParenExpr:
+		expr = ex.X
+		goto unpack
+
+	case *ast.UnaryExpr:
+		expr = ex.X
+		goto unpack
+
 	default:
 		return false
+		// keep-sorted end
 	}
 }
 

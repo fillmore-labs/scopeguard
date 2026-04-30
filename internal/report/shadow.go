@@ -29,11 +29,11 @@ import (
 
 	"fillmore-labs.com/scopeguard/internal/astutil"
 	"fillmore-labs.com/scopeguard/internal/category"
-	"fillmore-labs.com/scopeguard/internal/usage"
+	"fillmore-labs.com/scopeguard/internal/usage/check"
 )
 
 // reportUsedAfterShadow emits diagnostics for variables used after previously shadowed.
-func reportUsedAfterShadow(ctx context.Context, p *analysis.Pass, currentFile astutil.CurrentFile, fdecl inspector.Cursor, shadows []usage.ShadowUse, renames map[string][]string, rename bool) {
+func reportUsedAfterShadow(ctx context.Context, p *analysis.Pass, currentFile astutil.CurrentFile, fdecl inspector.Cursor, shadows []check.ShadowUse, renames map[string][]string, rename bool) {
 	if len(shadows) == 0 {
 		return
 	}

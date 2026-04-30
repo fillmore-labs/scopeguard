@@ -16,33 +16,21 @@
 
 package config
 
-// DefaultAnalyzers returns the default analyzers enabled.
-func DefaultAnalyzers() Analyzers { return ScopeAnalyzer | ShadowAnalyzer | NestedAssignAnalyzer }
-
 // Analyzers is representing a set of enabled or disabled analyzers.
+//
+//go:generate go tool bitmask -boolflag -type Analyzers
 type Analyzers uint8
 
 const (
 	// ScopeAnalyzer enables scope-based analysis for identifying variable declarations and usage.
-	ScopeAnalyzer Analyzers = 1 << iota
+	ScopeAnalyzer Analyzers = 1 << iota // scope
 
 	// ShadowAnalyzer enables analysis to detect shadowed variable declarations.
-	ShadowAnalyzer
+	ShadowAnalyzer // shadow
 
 	// NestedAssignAnalyzer enables the analysis of nested assignments.
-	NestedAssignAnalyzer
+	NestedAssignAnalyzer // nested-assign
+
+	// DefaultAnalyzers are all analyzers enabled.
+	DefaultAnalyzers Analyzers = 1<<iota - 1
 )
-
-var _analyzers = [...]string{
-	"scope",
-	"shadow",
-	"nested-assign",
-}
-
-func (a Analyzers) String() string { return toString(a, _analyzers[:]) }
-
-// Set adjusts the bitmask by enabling or disabling the specified option.
-func (a *Analyzers) Set(analyzer Analyzers, value bool) { set(a, analyzer, value) }
-
-// Enabled checks if the specified option is enabled in the current bitmask.
-func (a Analyzers) Enabled(analyzer Analyzers) bool { return enabled(a, analyzer) }

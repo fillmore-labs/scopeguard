@@ -56,7 +56,7 @@ func (us Stage) TrackUsage(ctx context.Context, body inspector.Cursor, f *ast.Fu
 
 	trace.Log(ctx, "function", f.Name.Name)
 
-	c := us.newUsageCollector()
+	c := us.newUsageCollector(ctx, f)
 
 	c.handleFunc(ctx, body, f.Recv, f.Type)
 
@@ -64,12 +64,12 @@ func (us Stage) TrackUsage(ctx context.Context, body inspector.Cursor, f *ast.Fu
 }
 
 // newUsageCollector creates a new usage collector for analyzing a function body.
-func (us Stage) newUsageCollector() collector {
+func (us Stage) newUsageCollector(ctx context.Context, f *ast.FuncDecl) collector {
 	var (
-		scopeEnabled  = us.analyzers.Enabled(config.ScopeAnalyzer)
-		shadowEnabled = us.analyzers.Enabled(config.ShadowAnalyzer)
-		nestedEnabled = us.analyzers.Enabled(config.NestedAssignAnalyzer)
-		firstUseOnly  = us.behavior.Enabled(config.FirstUseOnly)
+		scopeEnabled  = us.analyzers.Has(config.ScopeAnalyzer)
+		shadowEnabled = us.analyzers.Has(config.ShadowAnalyzer)
+		nestedEnabled = us.analyzers.Has(config.NestedAssignAnalyzer)
+		firstUseOnly  = us.behavior.Has(config.FirstUseOnly)
 
 		scopeRanges map[astutil.NodeIndex]ScopeRange
 	)
@@ -81,7 +81,7 @@ func (us Stage) newUsageCollector() collector {
 	return collector{
 		Pass:          us.Pass,
 		UsageScope:    us.UsageScope,
-		ShadowChecker: check.NewShadowChecker(shadowEnabled, firstUseOnly),
+		ShadowChecker: check.NewShadowChecker(ctx, us.TypesInfo, f, shadowEnabled, firstUseOnly),
 		NestedChecker: check.NewNestedChecker(nestedEnabled),
 		scopeRanges:   scopeRanges,
 		current:       make(map[*types.Var]declUsage),

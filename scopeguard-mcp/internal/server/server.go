@@ -30,6 +30,7 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"fillmore-labs.com/scopeguard/scopeguard-mcp/internal/help"
+	"fillmore-labs.com/scopeguard/scopeguard-mcp/internal/mcputil"
 	"fillmore-labs.com/scopeguard/scopeguard-mcp/internal/tools"
 )
 
@@ -41,26 +42,39 @@ func NewMCPServer(log *slog.Logger, inlineResources bool) *mcp.Server {
 	}
 
 	impl := &mcp.Implementation{
-		Name:       "scopeguard",
-		Title:      "ScopeGuard MCP",
-		Version:    version,
-		WebsiteURL: "https://fillmore-labs.com/scopeguard/scopeguard-mcp",
+		Name:        "scopeguard",
+		Title:       "ScopeGuard MCP",
+		Description: "The MCP server for the ScopeGuard analyzer",
+		Version:     version,
+		WebsiteURL:  "https://fillmore-labs.com/scopeguard/scopeguard-mcp",
 	}
 
 	opts := &mcp.ServerOptions{
 		Instructions: help.Instructions,
 		Capabilities: &mcp.ServerCapabilities{
-			Tools:     &mcp.ToolCapabilities{},
 			Resources: &mcp.ResourceCapabilities{},
+			Tools:     &mcp.ToolCapabilities{},
 		},
 		Logger: log,
 	}
 
 	server := mcp.NewServer(impl, opts)
 
-	tools.AddTools(server, inlineResources)
+	state := &mcputil.ServerState{InlineResources: inlineResources}
+	AddTools(server, state)
 
 	return server
+}
+
+// AddTools registers multiple tools, including Analyze, Scope, Shadow, and Help.
+func AddTools(server *mcp.Server, state *mcputil.ServerState) {
+	mcputil.AddDiffStore(server, state)
+
+	tools.AddAnalyzeTool(server)
+	tools.AddScopeTool(server, state)
+	tools.AddShadowTool(server, state)
+	tools.AddHelpTool(server)
+	tools.AddHelpTopics(server)
 }
 
 // Options for the scopeguard MCP server.
@@ -118,8 +132,8 @@ func (s *Options) Run(ctx context.Context) error {
 	// cors := http.NewCrossOriginProtection()
 	// cors.AddInsecureBypassPattern("http://localhost")
 	handler := mcp.NewStreamableHTTPHandler(getServer, &mcp.StreamableHTTPOptions{
+		// Stateless: true,
 		Logger: logger,
-		// CrossOriginProtection: cors,
 	})
 
 	httpServer := &http.Server{

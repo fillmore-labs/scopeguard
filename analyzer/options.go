@@ -17,7 +17,6 @@
 package analyzer
 
 import (
-	"fmt"
 	"log/slog"
 
 	"fillmore-labs.com/scopeguard/internal/config"
@@ -43,40 +42,40 @@ func Join(opts ...Option) Option {
 
 // WithScope is an [Option] to configure whether scope checks are enabled.
 func WithScope(scope bool) Option {
-	return flagOption[config.Analyzers]{flag: config.ScopeAnalyzer, value: scope}
+	return analyzerOption{flag: config.ScopeAnalyzer, value: scope}
 }
 
 // WithShadow is an [Option] to configure whether shadow checks are enabled.
 func WithShadow(shadow bool) Option {
-	return flagOption[config.Analyzers]{flag: config.ShadowAnalyzer, value: shadow}
+	return analyzerOption{flag: config.ShadowAnalyzer, value: shadow}
 }
 
 // WithNestedAssign is an [Option] to configure whether nested assign checks are enabled.
 func WithNestedAssign(nestedAssign bool) Option {
-	return flagOption[config.Analyzers]{flag: config.NestedAssignAnalyzer, value: nestedAssign}
+	return analyzerOption{flag: config.NestedAssignAnalyzer, value: nestedAssign}
 }
 
 // WithUnsafeDiagnostics is an [Option] to emit diagnostics for moves that have no automatic fix
 // available (i.e., those that would require Unsafe to apply) so the user can review them.
 func WithUnsafeDiagnostics(unsafeDiagnostics bool) Option {
-	return filterOption{index: 0, flag: config.FilterUnsafe | config.FilterBreaking, name: "unsafe-diagnostics", value: unsafeDiagnostics}
+	return filterOption{name: "unsafe-diagnostics", index: 0, filter: config.Unsafe | config.Breaking, value: unsafeDiagnostics}
 }
 
 // WithUnsafe is an [Option] to apply fixes for moves that may change evaluation
 // order relative to side effects.
 func WithUnsafe(unsafeFixes bool) Option {
-	return filterOption{index: 1, flag: config.FilterUnsafe, name: "unsafe", value: unsafeFixes}
+	return filterOption{name: "unsafe", index: 1, filter: config.Unsafe, value: unsafeFixes}
 }
 
 type filterOption struct {
-	index int
-	flag  config.SafetyFilter
-	name  string
-	value bool
+	name   string
+	index  int
+	filter config.Safety
+	value  bool
 }
 
 func (o filterOption) Apply(r *run.Options) error {
-	r.Filters[o.index].Set(o.flag, o.value)
+	r.Filters[o.index].Set(o.filter, o.value)
 
 	return nil
 }
@@ -87,17 +86,17 @@ func (o filterOption) LogAttr() slog.Attr {
 
 // WithCombine is an [Option] to configure combining declaration when moving to control flow initializers.
 func WithCombine(combine bool) Option {
-	return flagOption[config.Behaviors]{flag: config.CombineDeclarations, value: combine}
+	return behaviorsOption{flag: config.CombineDeclarations, value: combine}
 }
 
 // WithRename is an [Option] to configure renaming shadowed variables.
 func WithRename(rename bool) Option {
-	return flagOption[config.Behaviors]{flag: config.RenameVariables, value: rename}
+	return behaviorsOption{flag: config.RenameVariables, value: rename}
 }
 
 // WithGenerated is an [Option] to configure diagnostics in generated files.
 func WithGenerated(generated bool) Option {
-	return flagOption[config.Behaviors]{flag: config.IncludeGenerated, value: generated}
+	return behaviorsOption{flag: config.IncludeGenerated, value: generated}
 }
 
 // withFunctions is an internal [Option] to restrict analysis to the named functions.
@@ -113,30 +112,31 @@ func withRenames(renames typeutil.RenameMap) Option {
 // WithMaxLines is an [Option] to configure the maximum declaration size for moving to control flow initializers.
 func WithMaxLines(maxLines int) Option { return maxLinesOption{maxLines: maxLines} }
 
-type flagOption[T interface {
-	config.Analyzers | config.Behaviors
-	fmt.Stringer
-}] struct {
-	flag  T
+type analyzerOption struct {
+	flag  config.Analyzers
 	value bool
 }
 
-func (o flagOption[T]) Apply(r *run.Options) error {
-	switch flag := any(o.flag).(type) {
-	case config.Analyzers:
-		r.Analyzers.Set(flag, o.value)
-
-	case config.Behaviors:
-		r.Behaviors.Set(flag, o.value)
-
-	default:
-		panic(fmt.Sprintf("unexpected flag type: %T", flag))
-	}
-
+func (o analyzerOption) Apply(r *run.Options) error {
+	r.Analyzers.Set(o.flag, o.value)
 	return nil
 }
 
-func (o flagOption[_]) LogAttr() slog.Attr {
+func (o analyzerOption) LogAttr() slog.Attr {
+	return slog.Bool(o.flag.String(), o.value)
+}
+
+type behaviorsOption struct {
+	flag  config.Behaviors
+	value bool
+}
+
+func (o behaviorsOption) Apply(r *run.Options) error {
+	r.Behaviors.Set(o.flag, o.value)
+	return nil
+}
+
+func (o behaviorsOption) LogAttr() slog.Attr {
 	return slog.Bool(o.flag.String(), o.value)
 }
 

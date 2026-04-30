@@ -64,7 +64,7 @@ func New(p *analysis.Pass, scopes scope.Index, maxlines int, behaviors config.Be
 func (ts Stage) SelectTargets(ctx context.Context, cf astutil.CurrentFile, body inspector.Cursor, usageData usage.Result) []MoveTarget {
 	defer trace.StartRegion(ctx, "Target").End()
 
-	combine := ts.behaviors.Enabled(config.CombineDeclarations)
+	combine := ts.behaviors.Has(config.CombineDeclarations)
 
 	in := body.Inspector()
 
@@ -159,8 +159,24 @@ func (ts Stage) CollectCandidates(cm CandidateManager, body inspector.Cursor, cf
 func declInfo(declNode ast.Node, cf astutil.CurrentFile, maxLines int) (identifiers iter.Seq[*ast.Ident], onlyBlock bool) {
 	switch n := declNode.(type) {
 	case *ast.AssignStmt:
-		// Short declarations can go to init fields if they're small enough
-		return astutil.AllAssigned(n), maxLines > 0 && cf.Lines(declNode) > maxLines
+		// Short declarations can go to init fields if they're small enough.
+		blockOnly := maxLines > 0 && cf.Lines(declNode) > maxLines
+
+		// A function literal should not go into an init-field declaration.
+		// The variable is a helper used for readability, not the result of an
+		// action.
+		//
+		// Immediate invocation (`x := func() {...}()`) is unaffected.
+		if !blockOnly {
+			for _, rhs := range n.Rhs {
+				if _, ok := ast.Unparen(rhs).(*ast.FuncLit); ok {
+					blockOnly = true
+					break
+				}
+			}
+		}
+
+		return astutil.AllAssigned(n), blockOnly
 
 	case *ast.DeclStmt:
 		// var declarations can only go to block statements (not init fields)

@@ -27,3 +27,6 @@ func resolveLimit(limit *int) int {
 
 	return *limit
 }
+
+// maxLines specifies the maximum number of lines a declaration can span to be considered for moving.
+const maxLines = 10

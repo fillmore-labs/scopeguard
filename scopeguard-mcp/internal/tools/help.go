@@ -27,7 +27,8 @@ import (
 	"fillmore-labs.com/scopeguard/scopeguard-mcp/internal/mcputil"
 )
 
-func addHelpTool(server *mcp.Server) {
+// AddHelpTool registers the "help" tool.
+func AddHelpTool(server *mcp.Server) {
 	tool := &mcp.Tool{
 		Name:        guidance.HelpToolName,
 		Title:       "Help",
@@ -67,6 +68,19 @@ func (HelpContext) Help(_ context.Context, _ *mcp.CallToolRequest, args HelpArgs
 
 // HelpPrefix is the URI prefix used to identify help topic resources.
 const HelpPrefix = "help:///"
+
+// AddHelpTopics registers the resource server for [HelpPrefix].
+func AddHelpTopics(server *mcp.Server) {
+	template := &mcp.ResourceTemplate{
+		Name:        "help_topics",
+		Title:       "Help Topics",
+		Description: "Help topics for usage of ScopeGuard MCP tools",
+		MIMEType:    "text/markdown",
+		URITemplate: HelpPrefix + "{topic}",
+	}
+
+	server.AddResourceTemplate(template, helpTopic)
+}
 
 // helpTopic implements [mcp.ResourceHandler].
 func helpTopic(_ context.Context, req *mcp.ReadResourceRequest) (*mcp.ReadResourceResult, error) {

@@ -34,8 +34,7 @@ func New(opts ...Option) (*analysis.Analyzer, error) {
 		return nil, fmt.Errorf("configuring analyzer: %w", err)
 	}
 
-	a := r.New()
-	registerFlags(&a.Flags, r)
+	a := r.Analyzer()
 
 	return a, nil
 }

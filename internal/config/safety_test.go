@@ -17,7 +17,6 @@
 package config_test
 
 import (
-	"reflect"
 	"testing"
 
 	. "fillmore-labs.com/scopeguard/internal/config"
@@ -28,14 +27,14 @@ func TestSafety_String(t *testing.T) {
 
 	tests := []struct {
 		name   string
-		safety Safety
 		want   string
+		safety Safety
 	}{
-		{"Unknown", Unknown, "unknown"},
-		{"Safe", Safe, "safe"},
-		{"Unsafe", Unsafe, "unsafe"},
-		{"Breaking", Breaking, "breaking"},
-		{"Invalid", Safety(1 << 3), "Safety(4)"},
+		{"Nothing", "none", Nothing},
+		{"Safe", "safe", Safe},
+		{"Unsafe", "unsafe", Unsafe},
+		{"Breaking", "breaking", Breaking},
+		{"Invalid", "Safety: invalid value 0x8", Safety(1 << 3)},
 	}
 
 	for _, tt := range tests {
@@ -54,12 +53,12 @@ func TestSafety_MarshalText(t *testing.T) {
 
 	tests := []struct {
 		name   string
-		safety Safety
 		want   string
+		safety Safety
 	}{
-		{"Safe", Safe, "safe"},
-		{"Unsafe", Unsafe, "unsafe"},
-		{"Breaking", Breaking, "breaking"},
+		{"Safe", "safe", Safe},
+		{"Unsafe", "unsafe", Unsafe},
+		{"Breaking", "breaking", Breaking},
 	}
 
 	for _, tt := range tests {
@@ -89,9 +88,8 @@ func TestSafety_UnmarshalText(t *testing.T) {
 		{"Safe", "safe", Safe, false},
 		{"Unsafe", "unsafe", Unsafe, false},
 		{"Breaking", "breaking", Breaking, false},
-		{"Unknown (error)", "unknown", 0, true},
-		{"Invalid", "invalid", 0, true},
-		{"Empty", "", 0, true},
+		{"Invalid", "invalid", Nothing, true},
+		{"Empty", "", Nothing, false},
 	}
 
 	for _, tt := range tests {
@@ -116,17 +114,15 @@ func TestSafetyFilter(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		checks      map[Safety]bool
-		name        string
-		wantTiers   []string
-		filter      SafetyFilter
-		wantDefault bool
+		checks map[Safety]bool
+		name   string
+		tiers  string
+		filter Safety
 	}{
 		{
-			name:        "Default",
-			filter:      FilterAll,
-			wantDefault: true,
-			wantTiers:   []string{"safe", "unsafe", "breaking"},
+			name:   "Default",
+			filter: All,
+			tiers:  "all",
 			checks: map[Safety]bool{
 				Safe:     true,
 				Unsafe:   true,
@@ -134,10 +130,9 @@ func TestSafetyFilter(t *testing.T) {
 			},
 		},
 		{
-			name:        "Safe only",
-			filter:      FilterSafe,
-			wantDefault: false,
-			wantTiers:   []string{"safe"},
+			name:   "Safe only",
+			filter: Safe,
+			tiers:  "safe",
 			checks: map[Safety]bool{
 				Safe:     true,
 				Unsafe:   false,
@@ -145,10 +140,9 @@ func TestSafetyFilter(t *testing.T) {
 			},
 		},
 		{
-			name:        "Safe and Breaking",
-			filter:      FilterSafe | FilterBreaking,
-			wantDefault: false,
-			wantTiers:   []string{"safe", "breaking"},
+			name:   "Safe and Breaking",
+			filter: Safe | Breaking,
+			tiers:  "safe, breaking",
 			checks: map[Safety]bool{
 				Safe:     true,
 				Unsafe:   false,
@@ -161,16 +155,12 @@ func TestSafetyFilter(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			if got := tt.filter.Default(); got != tt.wantDefault {
-				t.Errorf("Default() got %v, want %v", got, tt.wantDefault)
-			}
-
-			if got := tt.filter.Tiers(); !reflect.DeepEqual(got, tt.wantTiers) {
-				t.Errorf("Tiers() got %v, want %v", got, tt.wantTiers)
+			if got := tt.filter.String(); got != tt.tiers {
+				t.Errorf("Tiers() got %s, want %s", got, tt.tiers)
 			}
 
 			for safety, wantEnabled := range tt.checks {
-				if got := tt.filter.Allowed(safety); got != wantEnabled {
+				if got := tt.filter.Has(safety); got != wantEnabled {
 					t.Errorf("Enabled(%v) got %v, want %v", safety, got, wantEnabled)
 				}
 			}
@@ -181,31 +171,31 @@ func TestSafetyFilter(t *testing.T) {
 func TestSafetyFilter_Set(t *testing.T) {
 	t.Parallel()
 
-	filter := FilterAll // all enabled by default
+	filter := All // all enabled by default
 
-	if !filter.Allowed(Safe) || !filter.Allowed(Unsafe) || !filter.Allowed(Breaking) {
+	if !filter.Has(Safe) || !filter.Has(Unsafe) || !filter.Has(Breaking) {
 		t.Fatal("Expected all tiers to be enabled by default")
 	}
 
-	filter.Set(FilterUnsafe, false)
+	filter.Set(Unsafe, false)
 
-	if filter.Allowed(Unsafe) {
-		t.Error("Expected Unsafe to be disabled after Set(FilterUnsafe, false)")
+	if filter.Has(Unsafe) {
+		t.Error("Expected Unsafe to be disabled after Set(Unsafe, false)")
 	}
 
-	if !filter.Allowed(Safe) || !filter.Allowed(Breaking) {
+	if !filter.Has(Safe) || !filter.Has(Breaking) {
 		t.Error("Expected other tiers to remain enabled")
 	}
 
-	filter.Set(FilterUnsafe, true)
+	filter.Set(Unsafe, true)
 
-	if !filter.Allowed(Unsafe) {
-		t.Error("Expected Unsafe to be enabled after Set(FilterUnsafe, true)")
+	if !filter.Has(Unsafe) {
+		t.Error("Expected Unsafe to be enabled after Set(Unsafe, true)")
 	}
 
-	filter.Set(FilterSafe|FilterBreaking, false)
+	filter.Set(Safe|Breaking, false)
 
-	if filter.Allowed(Safe) || filter.Allowed(Breaking) {
+	if filter.Has(Safe) || filter.Has(Breaking) {
 		t.Error("Expected safe and breaking to be disabled")
 	}
 }

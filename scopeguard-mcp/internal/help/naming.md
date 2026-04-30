@@ -8,9 +8,9 @@ shadow. The inner declaration keeps its short name.
 **Ask: why is this value still in scope?** Name the outer variable after the answer: after the role it plays across the
 shadow, not after the call that first produced it (the inner variable already owns that).
 
-- **Errors**: follow the [Go error-naming convention](https://go.dev/wiki/Errors#naming): `err`-prefixed camelCase
-  describing the phase or purpose (`errSetup`, `errEncode`, `errCleanup`). Avoid source-based names and suffixes like
-  `marshalErr`.
+- **Errors**: Disambiguate with `Err`-suffixed camelCase describing the context or purpose (`setupErr`, `encodeErr`,
+  `cleanupErr`). Avoid source-based names like `marshalErr`.
+
 - **Other variables**: name by role: `result`, `total`, `prev`, `first`.
 
 Always pass `renames`. The fallback numeric suffixes (`err_1`, `err_2`) are not idiomatic Go.

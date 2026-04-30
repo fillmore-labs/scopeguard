@@ -6,9 +6,9 @@ tabWidth: 4
 useTabs: false
 overrides:
   - files:
-      - "*.json"
-      - "*.md"
-      - "*.yaml"
-      - "*.yml"
+      - '*.json'
+      - '*.md'
+      - '*.yaml'
+      - '*.yml'
     options:
       tabWidth: 2

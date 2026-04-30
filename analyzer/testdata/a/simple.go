@@ -120,12 +120,22 @@ func simplesSelectStatement(ch chan int, x int) {
 	}
 }
 
-// Functions
+// Function literal — not moved into the if's init field
 func functions() {
-	even := func(i int) bool { return i%2 == 0 } // want "Variable 'even' can be moved to tighter if scope"
+	even := func(i int) bool { return i%2 == 0 }
 
 	if even(2) {
 		fmt.Println(2)
+	}
+}
+
+// Function literal with a tighter enclosing block — still moves to that block.
+func functionsBlock() {
+	even := func(i int) bool { return i%2 == 0 } // want "Variable 'even' can be moved to tighter block scope"
+	{
+		if even(2) {
+			fmt.Println(2)
+		}
 	}
 }
 
@@ -133,9 +143,18 @@ func functions() {
 func compositeLiteral() {
 	type T struct{ a int }
 
-	x := &[...]T{{1}} // want "Variable 'x' can be moved to tighter if scope"
+	x := T{1} // want "Variable 'x' can be moved to tighter if scope"
+	if (x == T{1}) {
+		fmt.Println(x)
+	}
+}
 
-	if x == &([...]T{{1}}) {
+// Complex composite Literal
+func complexCompositeLiteral() {
+	type T struct{ a int }
+
+	x := &[...]T{{1}} // want "Variable 'x' can be moved to tighter if scope"
+	if x == &[...]T{{1}} {
 		fmt.Println(x)
 	}
 }

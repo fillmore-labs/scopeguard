@@ -1,5 +1,5 @@
 ---
-version: "2"
+version: '2'
 
 run:
   modules-download-mode: readonly
@@ -11,19 +11,17 @@ formatters:
     - goimports
 
   settings:
-    gofumpt:
-      extra-rules: true
     goimports:
       local-prefixes:
         - fillmore-labs.com/scopeguard
 
 linters:
+  default: none
   enable:
     # keep-sorted start
     - copyloopvar
     - errcheck
     - exptostd
-    - gocheckcompilerdirectives
     - gochecksumtype
     - gocritic
     - godot
@@ -33,7 +31,6 @@ linters:
     - iface
     - inamedparam
     - ineffassign
-    - intrange
     - mirror
     - misspell
     - modernize
@@ -73,8 +70,7 @@ linters:
       scopeguard:
         type: module
         description: >-
-          scopeguard identifies variables with unnecessarily wide scope and suggests moving them to tighter
-          scopes.
+          scopeguard identifies variables with unnecessarily wide scope and suggests moving them to tighter scopes.
         original-url: https://fillmore-labs.com/scopeguard
         settings:
           max-lines: 10
@@ -94,7 +90,7 @@ linters:
         const:
           AUTHOR: Oliver Eikemeier
         regexp:
-          RANGE: ((2025-2026)|2025|2026)
+          RANGE: ((2025-2026)|202[56])
       template: |-
         Copyright {{RANGE}} {{AUTHOR}}. All Rights Reserved.
 
@@ -111,26 +107,26 @@ linters:
         limitations under the License.
 
         SPDX-License-Identifier: Apache-2.0
-    govet:
-      enable-all: true
-      disable:
-        - errorsas
-        - fieldalignment
-        - shadow
     gosec:
-      excludes:
-        - G304
-        - G703
       config:
         G104:
           ast:
             - Fprint
           format:
             - Node
+      excludes:
+        - G304
+        - G703
+    govet:
+      enable-all: true
+      disable:
+        - errorsas
+        - fieldalignment
+        - shadow
     nlreturn:
       block-size: 2
     predeclared:
-      ignore: ["new"]
+      ignore: ['new']
     revive:
       rules:
         # keep-sorted start
@@ -139,12 +135,11 @@ linters:
         - name: context-as-argument
         - name: context-keys-type
         - name: dot-imports
-          exclude: ["TEST"]
+          exclude: ['TEST']
         - name: early-return
           arguments:
             - allow-jump: true
         - name: empty-block
-        - name: error-naming
         - name: error-return
         - name: error-strings
         - name: errorf
@@ -162,6 +157,11 @@ linters:
         - name: var-declaration
         - name: var-naming
           # keep-sorted end
+    staticcheck:
+      checks:
+        - all
+        - -ST1000
+        - -ST1012
     tagliatelle:
       case:
         rules:
@@ -180,11 +180,6 @@ linters:
     paths:
       - ^examples/
       - ^(scopeguard-mcp/)?internal/diff/
-    rules:
-      - path: ^main\.go$
-        linters:
-          - gocheckcompilerdirectives
-        text: "go:debug"
 
 output:
   sort-order: [file, linter]

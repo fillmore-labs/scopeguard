@@ -355,7 +355,7 @@ func fprintAssign(buf *bytes.Buffer, in *inspector.Inspector, fset *token.FileSe
 
 		otherAssign, ok := otherNode.(*ast.AssignStmt)
 		if !ok {
-			return nil, fmt.Errorf("unexpected node type: %T", otherNode) // Should not happen
+			return nil, fmt.Errorf("unexpected node type: %T", otherNode) // should not happen
 		}
 
 		// Add removal edit for this declaration
@@ -517,7 +517,7 @@ func compositeLits(cls []int, c inspector.Cursor, start int) []int {
 	index := start
 	// Iterate through each RHS expression by index
 	for e, hasNode := c.ChildAt(edge.AssignStmt_Rhs, 0), true; hasNode; e, hasNode = e.NextSibling() {
-		if NeedParent(e) {
+		if NeedParen(e) {
 			// Record the index of this RHS expression
 			cls = append(cls, index)
 		}
@@ -528,16 +528,21 @@ func compositeLits(cls []int, c inspector.Cursor, start int) []int {
 	return cls
 }
 
-// NeedParent detects whether an expression contains composite literals that need parenthesization.
-func NeedParent(e inspector.Cursor) bool {
+// NeedParen detects whether an expression contains composite literals that need parenthesization.
+func NeedParen(e inspector.Cursor) bool {
 	// If the expression root itself is a composite literal, it has no enclosing parents
 	// within the expression boundary to provide safe delimiters. It needs parenthesization.
-	if _, ok := e.Node().(*ast.CompositeLit); ok {
-		return true
+	// https://go.dev/ref/spec#Composite_literals
+	if cl, ok := e.Node().(*ast.CompositeLit); ok {
+		return typeParamForm(cl)
 	}
 
 compLits:
 	for c := range e.Preorder((*ast.CompositeLit)(nil)) {
+		if cl := c.Node().(*ast.CompositeLit); !typeParamForm(cl) {
+			continue
+		}
+
 		// Found a composite literal. Walk up the parent chain to check if it's already
 		// safely delimited by parentheses, block braces, or other constructs.
 		for p := c; p.Index() != e.Index(); p = p.Parent() {
@@ -561,4 +566,13 @@ compLits:
 
 	// No problematic composite literals found
 	return false
+}
+
+func typeParamForm(cl *ast.CompositeLit) bool {
+	switch cl.Type.(type) {
+	case *ast.Ident, *ast.SelectorExpr:
+		return true
+	default:
+		return false
+	}
 }

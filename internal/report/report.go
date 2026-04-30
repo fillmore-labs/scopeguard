@@ -54,7 +54,7 @@ func (d Diagnostics) Process(ctx context.Context, p *analysis.Pass, fdecl inspec
 	hadFixes := reportMoves(ctx, p, in, d.Moves, filters)
 
 	// Nested assignments have no fixes, renames are always safe
-	if !filters.Diagnostic().Enabled(config.FilterSafe) {
+	if !filters.Diagnostic().Has(config.Safe) {
 		return
 	}
 
@@ -63,7 +63,7 @@ func (d Diagnostics) Process(ctx context.Context, p *analysis.Pass, fdecl inspec
 
 	// If hadFixes is true, variable renaming is suppressed. This is used to prevent conflicting
 	// text edits when other fixes have already been applied in the same pass.
-	rename = rename && !hadFixes && filters.Fix().Enabled(config.FilterSafe)
+	rename = rename && !hadFixes && filters.Fix().Has(config.Safe)
 
 	// Report variables used after shadowed
 	reportUsedAfterShadow(ctx, p, d.CurrentFile, fdecl, d.Shadows, renames, rename)
@@ -84,7 +84,7 @@ func reportMoves(ctx context.Context, p *analysis.Pass, in *inspector.Inspector,
 
 	for _, move := range moves {
 		safety := move.MoveStatus.Safety()
-		if !filters.Diagnostic().Allowed(safety) {
+		if !filters.Diagnostic().Has(safety) {
 			continue
 		}
 
@@ -99,7 +99,7 @@ func reportMoves(ctx context.Context, p *analysis.Pass, in *inspector.Inspector,
 
 		diagnostic.Message, diagnostic.Related = createMessage(in, move, cat)
 
-		if filters.Fix().Allowed(safety) {
+		if filters.Fix().Has(safety) {
 			if msg, edits := diagnostic.Message, createEdits(p, in, move); len(edits) > 0 {
 				diagnostic.SuggestedFixes = []analysis.SuggestedFix{{Message: msg, TextEdits: edits}}
 				hasFixes = true

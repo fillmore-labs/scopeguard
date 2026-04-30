@@ -133,7 +133,7 @@ func collectUsage(t *testing.T, src string) (CandidateManager, usage.Result) {
 	scopes := scope.NewIndex(info)
 	currentFile := astutil.NewCurrentFile(fset, files[0])
 
-	behavior := config.DefaultBehavior()
+	behavior := config.DefaultBehaviors
 	maxlines := -1
 
 	us := usage.New(p, scopes, config.ScopeAnalyzer, behavior)

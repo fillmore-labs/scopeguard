@@ -128,7 +128,7 @@ func TestAnalyze(t *testing.T) {
 					t.Errorf("issue[%d]: missing line number", i)
 				}
 
-				if d.Category == engine.IssueUnknown {
+				if d.Category == 0 {
 					t.Errorf("issue[%d]: empty category", i)
 				}
 			}

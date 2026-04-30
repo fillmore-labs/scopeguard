@@ -12,4 +12,4 @@ ol-prefix:
 no-blanks-blockquote:
   enabled: false
 no-inline-html:
-  allowed_elements: ["b", "code", "details", "summary", "p"]
+  allowed_elements: ['b', 'code', 'details', 'summary', 'p']

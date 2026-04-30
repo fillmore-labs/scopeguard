@@ -42,6 +42,7 @@ func WrapTool[In, Out any](tool *mcp.Tool, handler ToolHandler[In, Out], overrid
 	}
 
 	var err error
+
 	in := reflect.TypeFor[In]()
 
 	tool.InputSchema, c.inputResolved, err = resolvedSchema(in, overrides)

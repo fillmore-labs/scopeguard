@@ -77,7 +77,7 @@ func (b *builder) appendStmt(current *block.Block, stmt ast.Stmt, labeled *Label
 	case *ast.ExprStmt:
 		current.AddSimpleStmt(stmt)
 
-		if call, ok := stmt.X.(*ast.CallExpr); ok && !b.CanReturn(call) {
+		if call, ok := ast.Unparen(stmt.X).(*ast.CallExpr); ok && !b.CanReturn(call) {
 			return b.New(stmt.End()) // unreachable after non-returning call
 		}
 
@@ -110,8 +110,7 @@ func (b *builder) appendStmt(current *block.Block, stmt ast.Stmt, labeled *Label
 		return b.appendTypeSwitchStmt(current, stmt, labeled)
 
 	default: // *ast.CaseClause and *ast.CommClause
-		msg := fmt.Errorf("unexpected statement type: %T", stmt)
-		panic(msg)
+		panic(fmt.Sprintf("unexpected statement type: %T", stmt))
 		// keep-sorted end
 	}
 }
@@ -314,8 +313,7 @@ func (b *builder) appendSelectStmt(current *block.Block, stmt *ast.SelectStmt, l
 			operands = channelOperand
 
 		default:
-			msg := fmt.Errorf("unexpected communication clause: %T", stmt)
-			panic(msg)
+			panic(fmt.Sprintf("unexpected communication clause: %T", stmt))
 		}
 	}
 
