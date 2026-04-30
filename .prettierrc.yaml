@@ -5,12 +5,10 @@ proseWrap: always
 tabWidth: 4
 useTabs: false
 overrides:
-  - files: "*.md"
-    options:
-      tabWidth: 2
-  - files: "*.yaml"
-    options:
-      tabWidth: 2
-  - files: "*.yml"
+  - files:
+      - "*.json"
+      - "*.md"
+      - "*.yaml"
+      - "*.yml"
     options:
       tabWidth: 2

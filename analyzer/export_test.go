@@ -16,10 +16,24 @@
 
 package analyzer
 
-import "flag"
+import (
+	"flag"
+
+	"fillmore-labs.com/scopeguard/internal/typeutil"
+)
+
+type Settable[T any] = settable[T]
 
 // NewFlagValue returns a new flag.Value that maps to the specified flag bit.
 // It is used to export the unexported flagValue type for testing.
-func NewFlagValue[T ~uint8 | ~uint16 | ~uint32](flags *T, value T) flag.Getter {
+func NewFlagValue[T any](flags Settable[T], value T) flag.Getter {
 	return newFlagValue(flags, value)
+}
+
+// WithFunctions is an internal [Option] to restrict analysis to the named functions.
+func WithFunctions(functions ...typeutil.LocalFuncName) Option { return withFunctions(functions...) }
+
+// WithRenames is an internal [Option].
+func WithRenames(renames typeutil.RenameMap) Option {
+	return withRenames(renames)
 }

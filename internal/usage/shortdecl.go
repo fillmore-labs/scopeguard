@@ -69,18 +69,17 @@ func (c *collector) handleShortDecl(stmt *ast.AssignStmt, decl astutil.NodeIndex
 }
 
 func usageFlagsFromAssignedType(v *types.Var, assignedType types.Type) Flags {
-	switch {
-	case assignedType == types.Typ[types.UntypedNil]:
+	if b, ok := assignedType.(*types.Basic); ok && b.Kind() == types.UntypedNil {
 		// The predeclared identifier nil cannot be used to initialize a variable with no explicit type.
 		// https://go.dev/ref/spec#Variable_declarations
-		return UsageUsedAndTypeChange | UsageUntypedNil
-
-	case !types.Identical(v.Type(), assignedType):
-		return UsageTypeChange
-
-	default:
-		return UsageNone
+		return UsageTypeChange | UsageUntypedNil
 	}
+
+	if !types.Identical(v.Type(), assignedType) {
+		return UsageTypeChange
+	}
+
+	return UsageNone
 }
 
 // assignedType finds the inferred type of the assigned variable.

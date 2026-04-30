@@ -27,6 +27,7 @@ import (
 func InternalError(p *analysis.Pass, rng analysis.Range, format string, args ...any) {
 	msg := []byte("Internal Error: ")
 	msg = fmt.Appendf(msg, format, args...)
+	msg = append(msg, " (sg:xxx)"...)
 
-	p.Report(analysis.Diagnostic{Pos: rng.Pos(), End: rng.End(), Message: string(msg)})
+	p.Report(analysis.Diagnostic{Pos: rng.Pos(), End: rng.End(), Category: "xxx", Message: string(msg)})
 }

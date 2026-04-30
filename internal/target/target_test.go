@@ -23,10 +23,10 @@ import (
 	"golang.org/x/tools/go/analysis"
 
 	"fillmore-labs.com/scopeguard/internal/astutil"
+	"fillmore-labs.com/scopeguard/internal/category"
 	"fillmore-labs.com/scopeguard/internal/config"
 	"fillmore-labs.com/scopeguard/internal/scope"
 	. "fillmore-labs.com/scopeguard/internal/target"
-	"fillmore-labs.com/scopeguard/internal/target/check"
 	"fillmore-labs.com/scopeguard/internal/testsource"
 	"fillmore-labs.com/scopeguard/internal/usage"
 )
@@ -34,10 +34,10 @@ import (
 func TestTargets(t *testing.T) {
 	t.Parallel()
 
-	tests := []struct {
+	tests := [...]struct {
 		name   string
 		src    string
-		status check.MoveStatus
+		status category.MoveStatus
 		unused int
 	}{
 		{
@@ -48,7 +48,7 @@ func TestTargets(t *testing.T) {
 					_ = x
 				}
 			`,
-			status: check.MoveAllowed,
+			status: category.MoveAllowed,
 			unused: 0,
 		},
 		{
@@ -64,7 +64,7 @@ func TestTargets(t *testing.T) {
 					}
 				}
 			`,
-			status: check.MoveBlockedShadowed,
+			status: category.MoveBlockedShadowed,
 			unused: 0,
 		},
 		{
@@ -78,7 +78,7 @@ func TestTargets(t *testing.T) {
 				x = "string"
 				_, _ = x, y
 			`,
-			status: check.MoveBlockedTypeIncompatible,
+			status: category.MoveBlockedTypeIncompatible,
 			unused: 0,
 		},
 	}
@@ -88,29 +88,7 @@ func TestTargets(t *testing.T) {
 			t.Parallel()
 
 			// given
-			fset, files, fun, body := testsource.Parse(t, tt.src)
-			pkg, info := testsource.Check(t, fset, files)
-
-			p := &analysis.Pass{
-				Fset:      fset,
-				Files:     files,
-				TypesInfo: info,
-				Pkg:       pkg,
-			}
-
-			scopes := scope.NewIndex(info)
-
-			behavior := config.DefaultBehavior()
-			maxlines := -1
-
-			us := usage.New(p, scopes, config.ScopeAnalyzer, behavior)
-
-			ts := New(p, scopes, maxlines, behavior)
-
-			currentFile := astutil.NewCurrentFile(fset, files[0])
-
-			usageData, _ := us.TrackUsage(t.Context(), body, fun)
-			cm := ts.CollectMoveCandidates(body, currentFile, usageData.AllScopeRanges())
+			cm, usageData := collectUsage(t, tt.src)
 
 			// when
 			unused := cm.BlockMovesLosingTypeInfo(usageData.AllDeclarations())
@@ -120,10 +98,10 @@ func TestTargets(t *testing.T) {
 
 			// For this test setup, we expect at most one move target relevant to the test case
 			// Check if we found *any* target matching our expectation
-			idx := slices.IndexFunc(mt, func(m MoveTarget) bool { return m.Status == tt.status })
+			idx := slices.IndexFunc(mt, func(m MoveTarget) bool { return m.MoveStatus == tt.status })
 			if idx < 0 {
 				if len(mt) > 0 {
-					t.Errorf("Got status %q, expected %q", mt[0].Status, tt.status)
+					t.Errorf("Got status %q, expected %q", mt[0].MoveStatus, tt.status)
 				} else {
 					t.Errorf("Got no status, expected %q", tt.status)
 				}
@@ -137,4 +115,33 @@ func TestTargets(t *testing.T) {
 			}
 		})
 	}
+}
+
+func collectUsage(t *testing.T, src string) (CandidateManager, usage.Result) {
+	t.Helper()
+
+	fset, files, f, body := testsource.Parse(t, src)
+	pkg, info := testsource.Check(t, fset, files)
+
+	p := &analysis.Pass{
+		Fset:      fset,
+		Files:     files,
+		TypesInfo: info,
+		Pkg:       pkg,
+	}
+
+	scopes := scope.NewIndex(info)
+	currentFile := astutil.NewCurrentFile(fset, files[0])
+
+	behavior := config.DefaultBehavior()
+	maxlines := -1
+
+	us := usage.New(p, scopes, config.ScopeAnalyzer, behavior)
+	usageData, _ := us.TrackUsage(t.Context(), body, f)
+
+	ts := New(p, scopes, maxlines, behavior)
+	cm := NewManager()
+	ts.CollectCandidates(cm, body, currentFile, usageData.AllScopeRanges())
+
+	return cm, usageData
 }

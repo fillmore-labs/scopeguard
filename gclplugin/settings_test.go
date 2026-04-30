@@ -30,10 +30,12 @@ const allSettings = `{
 	"scope": true,
 	"shadow": true,
 	"nested-assign": true,
-	"conservative": false,
+	"unsafe": false,
+	"unsafe-diagnostics": true,
 	"combine": true,
 	"rename": true,
-	"max-lines": 10
+	"max-lines": 10,
+	"conservative": null
 }`
 
 func TestSettings(t *testing.T) {
@@ -44,7 +46,7 @@ func TestSettings(t *testing.T) {
 		settings string
 		want     int
 	}{
-		{"all", allSettings, reflect.TypeFor[Settings]().NumField()},
+		{"all", allSettings, reflect.TypeFor[Settings]().NumField() - 1},
 		{"none", `{}`, 0},
 	}
 

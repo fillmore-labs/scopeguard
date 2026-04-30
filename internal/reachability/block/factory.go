@@ -31,8 +31,8 @@ type Factory struct {
 
 // chunk is a linked list of fixed-size arrays of Blocks.
 type chunk struct {
-	blocks [chunkSize]Block
 	next   *chunk
+	blocks [chunkSize]Block
 }
 
 // chunkSize defines the number of Blocks stored in a single chunk.
@@ -73,7 +73,7 @@ func (f *Factory) All() []*Block {
 
 		for i := range n {
 			block := &next.blocks[i]
-			if block.isEmpty() {
+			if block.empty() {
 				continue
 			}
 

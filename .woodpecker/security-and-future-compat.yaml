@@ -12,11 +12,13 @@ steps:
     image: golang:${GO_VERSION}
     environment:
       GOTOOLCHAIN: local
+      GOPRIVATE: fillmore-labs.com
     commands:
-      - go telemetry on
       - echo "🤖 Run Vulnerability Scanner:"
       - go run golang.org/x/vuln/cmd/govulncheck@master ./...
+      - go run -C scopeguard-mcp golang.org/x/vuln/cmd/govulncheck@master ./...
       - echo "⬆️ Update to latest dependency versions:"
-      - find . -name go.mod -execdir go get -u ./... \; -execdir go mod tidy \;
+      - find . -name go.mod -execdir go get -u -t ./... \; -execdir go mod tidy \;
       - echo "🔨 Test on $(go version):"
       - go test ./...
+      - go -C scopeguard-mcp test ./...

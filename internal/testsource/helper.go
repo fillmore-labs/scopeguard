@@ -47,7 +47,7 @@ const testpkg = "test"
 //   - *ast.File: The parsed AST of the source file.
 //   - *ast.FuncDecl: The function declaration wrapping the source code.
 //   - inspector.Cursor: A cursor positioned at the wrapper function's Body field.
-func Parse(tb testing.TB, src string) (fset *token.FileSet, files []*ast.File, fn *ast.FuncDecl, body inspector.Cursor) {
+func Parse(tb testing.TB, src string) (fset *token.FileSet, files []*ast.File, f *ast.FuncDecl, body inspector.Cursor) {
 	tb.Helper()
 
 	const filename = "test.go"
@@ -63,18 +63,18 @@ func Parse(tb testing.TB, src string) (fset *token.FileSet, files []*ast.File, f
 
 	files = []*ast.File{file}
 
-	fn, body = firstFuncDecl(files)
-	if fn == nil {
+	f, body = firstFuncDecl(files)
+	if f == nil {
 		tb.Fatal("Can't find function")
 	}
 
-	return fset, files, fn, body
+	return fset, files, f, body
 }
 
 // Check performs type checking on the provided AST files.
 // It creates and returns a fully type-checked *types.Package and *types.Info.
 // Use this helper when testing analyzer components that require type information
-// (e.g. for method lookup, type identity, or scope analysis).
+// (e.g., for method lookup, type identity, or scope analysis).
 func Check(tb testing.TB, fset *token.FileSet, files []*ast.File) (*types.Package, *types.Info) {
 	tb.Helper()
 
@@ -112,7 +112,7 @@ func wrapSource(src string) *bytes.Buffer {
 	return &srcFile
 }
 
-func firstFuncDecl(files []*ast.File) (fn *ast.FuncDecl, body inspector.Cursor) {
+func firstFuncDecl(files []*ast.File) (f *ast.FuncDecl, body inspector.Cursor) {
 	root := inspector.New(files).Root()
 	for c := range root.Preorder((*ast.FuncDecl)(nil)) {
 		return c.Node().(*ast.FuncDecl), c.ChildAt(edge.FuncDecl_Body, -1)

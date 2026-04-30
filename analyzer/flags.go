@@ -35,25 +35,45 @@ func registerFlags(flags *flag.FlagSet, r *run.Options) {
 		{config.ShadowAnalyzer, "shadow", "shadow analysis"},
 		{config.NestedAssignAnalyzer, "nested-assign", "nested assign analysis"},
 	}
+	analyzers.register(flags, &r.Analyzers)
 
-	behavior := analyzeFlags[config.Behavior]{
+	behavior := analyzeFlags[config.Behaviors]{
 		{config.IncludeGenerated, "generated", "check generated files"},
-		{config.Conservative, "conservative", "only apply conservative moves"},
 		{config.CombineDeclarations, "combine", "combine declaration when moving to initializers"},
 		{config.RenameVariables, "rename", "rename shadowed variables"},
 	}
+	behavior.register(flags, &r.Behaviors)
 
-	analyzers.register(flags, &r.Analyzers)
-	behavior.register(flags, &r.Behavior)
+	diagnosticFilter := analyzeFlags[config.SafetyFilter]{
+		{config.FilterUnsafe | config.FilterBreaking, "unsafe-diagnostics", "add diagnostics for moves that have no automatic fix (i.e. unsafe moves)"},
+	}
+	diagnosticFilter.register(flags, &r.Filters[0])
+
+	fixFilter := analyzeFlags[config.SafetyFilter]{
+		{config.FilterUnsafe, "unsafe", "also apply fixes for moves that may change evaluation order relative to side effects"},
+	}
+	fixFilter.register(flags, &r.Filters[1])
+
 	flags.IntVar(&r.MaxLines, "max-lines", r.MaxLines, "maximum declaration lines for moving to initializers")
+
+	flags.Func("conservative", "deprecated: use -unsafe-diagnostics instead", func(s string) error {
+		v, err := parseBool(s)
+		if err != nil {
+			return err
+		}
+
+		r.Filters[0].Set(config.FilterUnsafe|config.FilterBreaking, !v)
+
+		return nil
+	})
 }
 
-type analyzeFlags[T ~uint8 | ~uint16 | ~uint32] []struct {
+type analyzeFlags[T any] []struct {
 	flag        T
 	name, usage string
 }
 
-func (a analyzeFlags[T]) register(flags *flag.FlagSet, b *T) {
+func (a analyzeFlags[T]) register(flags *flag.FlagSet, b settable[T]) {
 	for _, f := range a {
 		flags.Var(newFlagValue(b, f.flag), f.name, f.usage)
 	}

@@ -39,10 +39,10 @@ var _analyzers = [...]string{
 	"nested-assign",
 }
 
-func (a Analyzers) String() string { return toString(a, _analyzers[:], "none") }
+func (a Analyzers) String() string { return toString(a, _analyzers[:]) }
 
 // Set adjusts the bitmask by enabling or disabling the specified option.
-func (a *Analyzers) Set(flag Analyzers, value bool) { set(a, flag, value) }
+func (a *Analyzers) Set(analyzer Analyzers, value bool) { set(a, analyzer, value) }
 
 // Enabled checks if the specified option is enabled in the current bitmask.
-func (a Analyzers) Enabled(flag Analyzers) bool { return a&flag != 0 }
+func (a Analyzers) Enabled(analyzer Analyzers) bool { return enabled(a, analyzer) }

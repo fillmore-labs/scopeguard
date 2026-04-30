@@ -19,6 +19,8 @@ package tracker_test
 import (
 	"fmt"
 	"go/ast"
+	"os/exec"
+	"sync"
 	"testing"
 
 	"golang.org/x/tools/go/analysis"
@@ -32,10 +34,13 @@ import (
 func TestCanReturn(t *testing.T) {
 	t.Parallel()
 
-	testdata := analysistest.TestData()
+	testdata, err := testDir()
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	testAnalyzer := &analysis.Analyzer{
-		Name:     "canreturnanalyzer",
+		Name:     "nonreturnable",
 		Doc:      "test canreturn",
 		Run:      crrun,
 		Requires: []*analysis.Analyzer{inspect.Analyzer},
@@ -43,6 +48,17 @@ func TestCanReturn(t *testing.T) {
 
 	analysistest.Run(t, testdata, testAnalyzer, "./cantreturn")
 }
+
+var testDir = sync.OnceValues(func() (string, error) {
+	testdata := analysistest.TestData()
+
+	cmd := exec.Command("go", "mod", "download")
+	cmd.Dir = testdata
+
+	err := cmd.Run()
+
+	return testdata, err
+})
 
 func crrun(p *analysis.Pass) (any, error) {
 	in, ok := p.ResultOf[inspect.Analyzer].(*inspector.Inspector)

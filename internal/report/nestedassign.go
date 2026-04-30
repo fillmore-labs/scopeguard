@@ -25,6 +25,7 @@ import (
 	"golang.org/x/tools/go/ast/inspector"
 
 	"fillmore-labs.com/scopeguard/internal/astutil"
+	"fillmore-labs.com/scopeguard/internal/category"
 	"fillmore-labs.com/scopeguard/internal/usage"
 )
 
@@ -42,11 +43,13 @@ func reportNestedAssigned(ctx context.Context, p *analysis.Pass, in *inspector.I
 		}
 
 		stmt := assignment.Asgn.Node(in)
+		cat := category.NestedAssignment
 
 		p.Report(analysis.Diagnostic{
-			Pos:     assignment.Ident.Pos(),
-			End:     assignment.Ident.End(),
-			Message: fmt.Sprintf("Nested reassignment of variable '%s' (sg:nst)", assignment.Ident.Name),
+			Pos:      assignment.Ident.Pos(),
+			End:      assignment.Ident.End(),
+			Category: cat,
+			Message:  fmt.Sprintf("Nested reassignment of variable '%s' (sg:%s)", assignment.Ident.Name, cat),
 			Related: []analysis.RelatedInformation{{
 				Pos:     stmt.Pos(),
 				End:     stmt.End(),

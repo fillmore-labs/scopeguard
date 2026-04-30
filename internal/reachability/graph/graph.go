@@ -29,8 +29,8 @@ import (
 
 // BlockInterval represents a range in the source file with successor block indices for control-flow analysis.
 type BlockInterval struct {
+	Successors []int     // Indices of successor blocks in the interval slice.
 	Start, End token.Pos // The range of the block in the source file.
-	Successors []int     // Indices of successor blocks in the intervals slice.
 }
 
 // Compare returns whether the position p is within the interval, before or after.
@@ -84,8 +84,8 @@ func traverseFunc(info *types.Info, recv *ast.FieldList, typ *ast.FuncType, body
 func buildIntervals(blocks []*block.Block) []BlockInterval {
 	// Build index map: maps each block to its position in the sorted slice
 	idxMap := make(map[*block.Block]int, len(blocks))
-	for i, block := range blocks {
-		idxMap[block] = i
+	for i, b := range blocks {
+		idxMap[b] = i
 	}
 
 	// Reusable set for tracking visited blocks during recursive successor traversal
@@ -93,13 +93,13 @@ func buildIntervals(blocks []*block.Block) []BlockInterval {
 
 	// Build intervals
 	intervals := make([]BlockInterval, len(blocks))
-	for i, block := range blocks {
+	for i, b := range blocks {
 		successors := make([]int, 0, 2)
 
-		successors = appendSuccessors(successors, block, idxMap, seen)
+		successors = appendSuccessors(successors, b, idxMap, seen)
 		intervals[i] = BlockInterval{
-			Start:      block.Pos,
-			End:        block.End,
+			Start:      b.Pos,
+			End:        b.End,
 			Successors: successors,
 		}
 

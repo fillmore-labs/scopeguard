@@ -22,13 +22,13 @@ import (
 )
 
 // Shadowing looks for a shadowed variable in parent scopes. It doesn't
-// cross function scopes.
+// cross-function scopes.
 //
 // Parameters:
 //   - inner: The variable that may be shadowing another
 //
 // Returns:
-//   - outer: The outer variable being shadowed (nil if none found)
+//   - outer: The outer variable being shadowed (nil if none is found)
 func (s Index) Shadowing(inner *types.Var) (outer *types.Var) {
 	scope := inner.Parent() // The scope the variable declaration lives in
 

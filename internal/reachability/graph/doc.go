@@ -19,6 +19,6 @@ Package graph provides control-flow graph analysis.
 
 It enables reachability analysis between source code positions and limitation to a forward-only flow to approximate code reading.
 
-The original algorithm was written by Alan Donovan for [golang.org/x/tools/go/cfg].
+Alan Donovan wrote the original algorithm for [golang.org/x/tools/go/cfg].
 */
 package graph

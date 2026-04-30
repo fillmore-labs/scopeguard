@@ -26,7 +26,7 @@ import (
 func TestBlockFactory(t *testing.T) {
 	t.Parallel()
 
-	tests := []struct {
+	tests := [...]struct {
 		name  string
 		count int
 	}{

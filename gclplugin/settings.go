@@ -26,14 +26,19 @@ type Settings struct {
 	Shadow *bool `json:"shadow,omitzero"`
 	// NestedAssign enables nested assignment checks.
 	NestedAssign *bool `json:"nested-assign,omitzero"`
-	// Conservative restricts moves to those without potential side effects.
-	Conservative *bool `json:"conservative,omitzero"`
+	// Unsafe enables fixes for moves that may change evaluation order relative to side effects.
+	Unsafe *bool `json:"unsafe,omitzero"`
+	// UnsafeDiagnostics enables diagnostics for moves that have no automatic fix (unsafe moves).
+	UnsafeDiagnostics *bool `json:"unsafe-diagnostics,omitzero"`
 	// Combine enables combining declarations when moving to control flow initializers.
 	Combine *bool `json:"combine,omitzero"`
 	// Rename enables renaming of shadowed variables.
 	Rename *bool `json:"rename,omitzero"`
 	// MaxLines sets the maximum declaration size for moving to control flow initializers.
 	MaxLines *int `json:"max-lines,omitzero"`
+
+	// Legacy compatibility
+	Conservative *bool `json:"conservative,omitzero"`
 }
 
 // Options converts [Settings] into a list of [scopeguard.Option] for the scopeguard analyzer.
@@ -41,10 +46,15 @@ type Settings struct {
 func (s Settings) Options() []scopeguard.Option {
 	var opts []scopeguard.Option
 
+	if s.Conservative != nil {
+		opts = append(opts, scopeguard.WithUnsafeDiagnostics(!*s.Conservative))
+	}
+
 	opts = appendOption(opts, s.Scope, scopeguard.WithScope)
 	opts = appendOption(opts, s.Shadow, scopeguard.WithShadow)
 	opts = appendOption(opts, s.NestedAssign, scopeguard.WithNestedAssign)
-	opts = appendOption(opts, s.Conservative, scopeguard.WithConservative)
+	opts = appendOption(opts, s.Unsafe, scopeguard.WithUnsafe)
+	opts = appendOption(opts, s.UnsafeDiagnostics, scopeguard.WithUnsafeDiagnostics)
 	opts = appendOption(opts, s.Combine, scopeguard.WithCombine)
 	opts = appendOption(opts, s.Rename, scopeguard.WithRename)
 	opts = appendOption(opts, s.MaxLines, scopeguard.WithMaxLines)

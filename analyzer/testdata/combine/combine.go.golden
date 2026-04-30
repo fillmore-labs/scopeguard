@@ -19,16 +19,16 @@ package combine
 import "fmt"
 
 func combine() {
-	// want "Variable 'x' can be moved to tighter if scope"
-	// want "Variable 'y' can be moved to tighter if scope"
+	// want "Variables 'x' and 'y' can be combined and moved to tighter if scope"
+
 	if x, y := 1, 2; x < y {
 		fmt.Println(x, y)
 	}
 }
 
 func combineNested() {
-	// want "Variable 'x' can be moved to tighter if scope"
-	// want "Variable 'y' can be moved to tighter if scope"
+	// want "Variables 'x' and 'y' can be combined and moved to tighter if scope"
+
 	{
 		if x, y := 1, 2; x < y {
 			fmt.Println(x, y)
@@ -37,9 +37,9 @@ func combineNested() {
 }
 
 func nested() {
-	// want "Variable 'x' can be moved to tighter if scope"
+	// want "Variables 'x' and 'y' can be combined and moved to tighter if scope"
 	{
-		// want "Variable 'y' can be moved to tighter if scope"
+
 		{
 			if x, y := 1, 2; x < y {
 				fmt.Println(x, y)

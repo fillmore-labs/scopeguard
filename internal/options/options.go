@@ -20,7 +20,7 @@ import "log/slog"
 
 // Option is a single functional option.
 type Option[T any] interface {
-	Apply(opts T)
+	Apply(opts T) error
 	LogAttr() slog.Attr
 }
 
@@ -30,21 +30,25 @@ type Option[T any] interface {
 //
 //	slog.LogAttrs(ctx, slog.LevelInfo, "settings", Join(opts...).LogAttr())
 func Join[T any, O Option[T]](opts []O) Options[T, O] {
-	return Options[T, O](opts)
+	return opts
 }
 
 // Options is a collection of functional Options.
 type Options[T any, O Option[T]] []O
 
 // Apply applies each Option in the list.
-func (o Options[T, _]) Apply(opts T) {
+func (o Options[T, _]) Apply(opts T) error {
 	for _, opt := range o {
 		if any(opt) == nil {
 			continue // skip nil options
 		}
 
-		opt.Apply(opts)
+		if err := opt.Apply(opts); err != nil {
+			return err
+		}
 	}
+
+	return nil
 }
 
 const optionsName = "options"

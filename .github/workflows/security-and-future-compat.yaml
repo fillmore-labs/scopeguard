@@ -21,6 +21,7 @@ jobs:
     timeout-minutes: 10
     env:
       GOTOOLCHAIN: local
+      GOPRIVATE: fillmore-labs.com
     steps:
       - name: ✔ Check out
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -30,7 +31,7 @@ jobs:
         run: |
           go env -w GOMODCACHE="$HOME/go/pkg/mod"
       - name: 📦 Cache Go modules
-        uses: actions/cache@cdf6c1fa76f9f475f3d7449005a359c84ca0f306 # v5.0.3
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
         with:
           path: |
             ~/go/pkg/mod
@@ -39,13 +40,14 @@ jobs:
           restore-keys: |
             tip-${{ runner.os }}-
       - name: 🤖 Vulnerability Scanner
-        run: go run golang.org/x/vuln/cmd/govulncheck@master ./...
+        run: |-
+          go run golang.org/x/vuln/cmd/govulncheck@master ./...
+          test -f scopeguard-mcp/go.mod && go run -C scopeguard-mcp golang.org/x/vuln/cmd/govulncheck@master ./...
       - name: ⬆️ Update to latest dependency versions
         run: >
-          find . -name go.mod
-          -execdir go get -u -t ./... \;
-          -execdir go mod tidy \;
+          find . -name go.mod -execdir go get -u -t ./... \; -execdir go mod tidy \;
       - name: 🔨 Test
         run: |-
           go version
           go test ./...
+          test -f scopeguard-mcp/go.mod && go -C scopeguard-mcp test ./...

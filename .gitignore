@@ -11,10 +11,10 @@
 !/.golangci.yaml
 !/.github/
 !/.woodpecker/
-/cover.out
+cover.out
 /trace.out
 /test.xml
-/scopeguard 
+/scopeguard
 /bazel-*
 /bin/
 /out/

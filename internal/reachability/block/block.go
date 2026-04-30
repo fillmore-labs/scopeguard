@@ -28,25 +28,18 @@ import (
 // [basic Block]: https://en.wikipedia.org/wiki/Basic_block
 // [control-flow graph]: https://en.wikipedia.org/wiki/Control-flow_graph
 type Block struct {
-	Pos, End token.Pos // The beginning and end of the source range
-
 	// The successors.
 	//
 	// For unconditional jumps, Successor1 is the only successor.
 	// For conditional branches, Successor1 is the "then" branch,
 	// Successor2 the "else" branch.
 	Successor1, Successor2 *Block
+
+	// The beginning and end of the source range
+	Pos, End token.Pos
 }
 
-// GetSourceRange returns the source code range of the block.
-func (b *Block) GetSourceRange(fset *token.FileSet) (from, to token.Position) {
-	from = fset.PositionFor(b.Pos, false)
-	to = fset.PositionFor(b.End, false)
-
-	return from, to
-}
-
-func (b *Block) isEmpty() bool {
+func (b *Block) empty() bool {
 	return !b.End.IsValid()
 }
 

@@ -20,26 +20,19 @@ import (
 	"go/ast"
 
 	"fillmore-labs.com/scopeguard/internal/astutil"
+	"fillmore-labs.com/scopeguard/internal/category"
 )
 
 // MoveTarget represents a declaration that can be moved to a tighter scope.
 type MoveTarget struct {
-	MovableDecl                 // The declaration to move
-	TargetNode    ast.Node      // The node with the target scope (e.g., *[ast.IfStmt], *[ast.BlockStmt])
-	AbsorbedDecls []MovableDecl // Additional declarations merged into this one
-	Status        MoveStatus    // Status indicating if the move is safe or why it isn't
+	AbsorbedDecls []MovableDecl       // Additional declarations merged into this one
+	TargetNode    ast.Node            // The node with the target scope (e.g., *[ast.IfStmt], *[ast.BlockStmt])
+	MovableDecl                       // The declaration to move
+	MoveStatus    category.MoveStatus // Status indicating if the move is safe or why it isn't
 }
 
 // MovableDecl represents a declaration that can be moved to another scope in the code analysis process.
 type MovableDecl struct {
-	Decl   astutil.NodeIndex // Inspector index of the declaration statement to move
 	Unused []string          // Unused identifiers in this declaration
-}
-
-// MoveStatus indicates if a move is safe or why it isn't.
-// Implementations report specific reasons that prevent moving
-// a declaration (e.g., variable shadowing, scope conflicts).
-type MoveStatus interface {
-	Movable() bool
-	String() string
+	Decl   astutil.NodeIndex // Inspector index of the declaration statement to move
 }

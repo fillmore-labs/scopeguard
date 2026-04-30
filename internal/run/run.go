@@ -21,7 +21,9 @@ import (
 	"errors"
 	"fmt"
 	"go/ast"
+	"go/types"
 	"runtime/trace"
+	"slices"
 
 	"golang.org/x/tools/go/analysis"
 	"golang.org/x/tools/go/analysis/passes/inspect"
@@ -33,6 +35,7 @@ import (
 	"fillmore-labs.com/scopeguard/internal/report"
 	"fillmore-labs.com/scopeguard/internal/scope"
 	"fillmore-labs.com/scopeguard/internal/target"
+	"fillmore-labs.com/scopeguard/internal/typeutil"
 	"fillmore-labs.com/scopeguard/internal/usage"
 )
 
@@ -42,8 +45,7 @@ import (
 var ErrResultMissing = errors.New("analyzer result missing")
 
 // Run executes the scopeguard analyzer's pipeline.
-func (r *Options) Run(p *analysis.Pass) (any, error) {
-	// Retrieves the [inspector.Inspector] from the pass results.
+func (o *Options) Run(p *analysis.Pass) (any, error) {
 	in, ok := p.ResultOf[inspect.Analyzer].(*inspector.Inspector)
 	if !ok {
 		return nil, fmt.Errorf("scopeguard: %s %w", inspect.Analyzer.Name, ErrResultMissing)
@@ -59,23 +61,26 @@ func (r *Options) Run(p *analysis.Pass) (any, error) {
 	// Build inverted scope->node map for bidirectional AST/scope navigation
 	scopes := scope.NewIndex(p.TypesInfo)
 
-	us := usage.New(p, scopes, r.Analyzers, r.Behavior)
+	us := usage.New(p, scopes, o.Analyzers, o.Behaviors)
 
-	ts := target.New(p, scopes, r.MaxLines, r.Behavior)
+	ts := target.New(p, scopes, o.MaxLines, o.Behaviors)
+
+	// Processed functions are returned as the result value so that
+	//  callers can detect which function a diagnostic belongs to.
+	var processed []Function
 
 	// Loop over all files
-	for f := range in.Root().Children() {
-		file := f.Node().(*ast.File)
+	for c := range in.Root().Children() {
+		file := c.Node().(*ast.File)
 
 		currentFile := astutil.NewCurrentFile(p.Fset, file)
 		if !currentFile.Valid() {
 			astutil.InternalError(p, file, "File %s without valid info", file.Name.Name)
-
 			continue
 		}
 
 		// Skip generated files
-		if currentFile.Generated() && !r.Behavior.Enabled(config.IncludeGenerated) {
+		if currentFile.Generated() && !o.Behaviors.Enabled(config.IncludeGenerated) {
 			continue
 		}
 
@@ -85,22 +90,40 @@ func (r *Options) Run(p *analysis.Pass) (any, error) {
 		}
 
 		// Loop over all function and method declarations in this file
-		for c := range f.Preorder((*ast.FuncDecl)(nil)) {
-			fun := c.Node().(*ast.FuncDecl)
+		for c := range c.Preorder((*ast.FuncDecl)(nil)) {
+			f := c.Node().(*ast.FuncDecl)
 
-			if fun.Body == nil {
+			if f.Body == nil {
 				continue
 			}
 
-			// Skip functions with nolint comment
-			if astutil.CommentGroupHasNoLint(fun.Doc) {
-				continue
+			var fn typeutil.LocalFuncName
+			if fun, ok := p.TypesInfo.Defs[f.Name].(*types.Func); ok {
+				fn = typeutil.FuncNameOf(fun).LocalFuncName
 			}
+
+			// Check function n when we have a function filter
+			if len(o.Functions) > 0 {
+				if !slices.Contains(o.Functions, fn) {
+					continue
+				}
+			} else {
+				// Skip functions with nolint comment
+				if astutil.CommentGroupHasNoLint(f.Doc) {
+					continue
+				}
+			}
+
+			processed = append(processed, Function{
+				Pos:  f.Pos(),
+				End:  f.End(),
+				Name: fn,
+			})
 
 			body := c.ChildAt(edge.FuncDecl_Body, -1)
 
 			// Stage 1: Collect all movable variable declarations and track variable uses
-			usageData, usageDiagnostics := us.TrackUsage(ctx, body, fun)
+			usageData, usageDiagnostics := us.TrackUsage(ctx, body, f)
 
 			var moves []target.MoveTarget
 
@@ -110,16 +133,21 @@ func (r *Options) Run(p *analysis.Pass) (any, error) {
 				moves = ts.SelectTargets(ctx, currentFile, body, usageData)
 			}
 
+			// Stage 3: Generate diagnostics with suggested fixes
 			diagnostics := report.Diagnostics{
 				CurrentFile: currentFile,
 				Moves:       moves,
 				Diagnostics: usageDiagnostics,
 			}
 
-			// Stage 3: Generate diagnostics with suggested fixes
-			report.ProcessDiagnostics(ctx, p, c, diagnostics, r.Behavior)
+			rename := o.Behaviors.Enabled(config.RenameVariables) && !diagnostics.Generated()
+			renames := o.Renames[fn]
+
+			diagnostics.Process(ctx, p, c, o.Filters, renames, rename)
 		}
 	}
 
-	return nil, nil
+	slices.SortFunc(processed, func(a, b Function) int { return int(a.Pos - b.Pos) })
+
+	return Result{Processed: processed}, nil
 }

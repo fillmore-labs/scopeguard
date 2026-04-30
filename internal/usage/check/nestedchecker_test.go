@@ -45,11 +45,11 @@ func TestNestedChecker_TrackAssignment(t *testing.T) {
 	v2 := types.NewVar(OuterEnd, nil, "v2", types.Typ[types.Int])
 	id2use := &ast.Ident{Name: "v2", NamePos: OtherUse}
 
-	tests := []struct {
+	tests := [...]struct {
 		name     string
-		enabled  bool
 		ops      func(*NestedChecker)
 		expected []NestedAssign
+		enabled  bool
 	}{
 		{
 			name:    "disabled",

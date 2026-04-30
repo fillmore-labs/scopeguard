@@ -19,8 +19,6 @@ package target
 import (
 	"context"
 	"go/ast"
-	"go/token"
-	"go/types"
 	"iter"
 	"runtime/trace"
 
@@ -28,9 +26,9 @@ import (
 	"golang.org/x/tools/go/ast/inspector"
 
 	"fillmore-labs.com/scopeguard/internal/astutil"
+	"fillmore-labs.com/scopeguard/internal/category"
 	"fillmore-labs.com/scopeguard/internal/config"
 	"fillmore-labs.com/scopeguard/internal/scope"
-	"fillmore-labs.com/scopeguard/internal/target/check"
 	"fillmore-labs.com/scopeguard/internal/usage"
 )
 
@@ -46,17 +44,17 @@ type Stage struct {
 	// into control flow initializers.
 	maxLines int
 
-	// behavior holds layout and behavioral options.
-	behavior config.Behavior
+	// behaviors holds layout and behavioral options.
+	behaviors config.Behaviors
 }
 
 // New creates a [target.Stage].
-func New(p *analysis.Pass, scopes scope.Index, maxlines int, behavior config.Behavior) Stage {
+func New(p *analysis.Pass, scopes scope.Index, maxlines int, behaviors config.Behaviors) Stage {
 	return Stage{
 		Pass:        p,
 		TargetScope: scope.NewTargetScope(scopes),
 		maxLines:    maxlines,
-		behavior:    behavior,
+		behaviors:   behaviors,
 	}
 }
 
@@ -66,16 +64,17 @@ func New(p *analysis.Pass, scopes scope.Index, maxlines int, behavior config.Beh
 func (ts Stage) SelectTargets(ctx context.Context, cf astutil.CurrentFile, body inspector.Cursor, usageData usage.Result) []MoveTarget {
 	defer trace.StartRegion(ctx, "Target").End()
 
-	conservate := ts.behavior.Enabled(config.Conservative)
-	combine := ts.behavior.Enabled(config.CombineDeclarations)
+	combine := ts.behaviors.Enabled(config.CombineDeclarations)
 
 	in := body.Inspector()
 
-	// Identify all potential move candidates
-	cm := ts.CollectMoveCandidates(body, cf, usageData.AllScopeRanges())
+	cm := NewManager()
 
-	// Block moves that would change variable types
-	cm.BlockMovesWithTypeChanges(usageData.AllDeclarations(), conservate)
+	// Identify all potential move candidates
+	ts.CollectCandidates(cm, body, cf, usageData.AllScopeRanges())
+
+	// Block moves that would change variable types.
+	cm.BlockMovesWithTypeChanges(usageData.AllDeclarations())
 
 	// Calculate unused identifiers and block moves that would lose necessary type information
 	unused := cm.BlockMovesLosingTypeInfo(usageData.AllDeclarations())
@@ -83,24 +82,20 @@ func (ts Stage) SelectTargets(ctx context.Context, cf astutil.CurrentFile, body 
 	// Resolve Init field conflicts (possibly by combining them)
 	cm.ResolveInitFieldConflicts(in, combine)
 
-	if conservate {
-		// In conservative mode, blocks moves if there are intervening statements with possible side effects.
-		cm.BlockSideEffects(ts.TypesInfo, body)
-	}
-
-	// Find declarations that become orphaned after other moves
+	// Find declarations that become orphaned after other moves.
 	orphanedDeclarations := cm.OrphanedDeclarations(usageData.AllDeclarations())
+
+	// Detect moves with potential side effects.
+	cm.MarkSideEffects(ts.TypesInfo, body)
 
 	// Convert candidates to the final sorted result
 	return cm.SortedMoveTargets(unused, orphanedDeclarations)
 }
 
-// CollectMoveCandidates iterates through all usage scopes and determines valid target nodes
+// CollectCandidates iterates through all usage scopes and determines valid target nodes
 // for declarations that can be moved to tighter scopes.
-func (ts Stage) CollectMoveCandidates(body inspector.Cursor, cf astutil.CurrentFile, scopeRanges iter.Seq2[astutil.NodeIndex, usage.ScopeRange]) CandidateManager {
+func (ts Stage) CollectCandidates(cm CandidateManager, body inspector.Cursor, cf astutil.CurrentFile, scopeRanges iter.Seq2[astutil.NodeIndex, usage.ScopeRange]) {
 	labels := sortedLabels(body)
-
-	cm := newCandidateManager()
 
 	in := body.Inspector()
 
@@ -114,63 +109,50 @@ func (ts Stage) CollectMoveCandidates(body inspector.Cursor, cf astutil.CurrentF
 			continue // Cannot move, already at the innermost scope
 		}
 
-		if m, ok := ts.analyzeCandidate(in, cf, decl, declScope, usageScope, labels); ok {
-			cm.candidates[decl] = m
+		declCursor := decl.Cursor(in)
+		declNode := declCursor.Node()
+
+		// Find the tightest scope we can move to (avoiding loops, closures)
+		safeScope := ts.FindSafeScope(declScope, usageScope)
+		switch safeScope {
+		case nil:
+			astutil.InternalError(ts.Pass, declNode, "Invalid scope calculations")
+			continue
+
+		case declScope:
+			continue // No scope tightening possible
 		}
+
+		// Determine assigned identifiers and whether the declaration can be moved to an init field
+		identifiers, onlyBlock := declInfo(declNode, cf, ts.maxLines)
+		if identifiers == nil {
+			continue // Unsupported declaration type
+		}
+
+		declPos := declNode.Pos()
+
+		// Find the nearest label after this declaration.
+		// We cannot move the declaration past it to avoid placing it inside a loop.
+		labelBarrier := nextLabel(labels, declPos)
+
+		// Find the target AST node for the move
+		targetNode := ts.TargetNode(declScope, safeScope, labelBarrier, onlyBlock)
+		if targetNode == nil || cf.NoLintComment(declPos) {
+			continue
+		}
+
+		// Do various safety checks whether we should suppress the fix (but not the diagnostic).
+		var status category.MoveStatus
+		if cf.Generated() {
+			status = category.MoveBlockedGenerated
+		} else {
+			status = SafetyCheck(ts.TypesInfo, declCursor, declScope, safeScope, identifiers)
+		}
+
+		// Create a move candidate
+		m := MoveCandidate{TargetNode: targetNode, Status: status}
+		cm.AddCandidate(decl, m)
 	}
-
-	return cm
-}
-
-// analyzeCandidate evaluates a single declaration to see if it can be moved.
-// It handles:
-//   - Filtering out suppressed declarations (nolint, maxLines)
-//   - Finding safe scopes that avoid semantic hazards
-//   - Selecting appropriate target AST nodes based on the declaration type
-func (ts Stage) analyzeCandidate(in *inspector.Inspector, cf astutil.CurrentFile, decl astutil.NodeIndex, declScope, usageScope *types.Scope, labels []token.Pos) (MoveCandidate, bool) {
-	declCursor := decl.Cursor(in)
-	declNode := declCursor.Node()
-
-	// Find the tightest scope we can move to (avoiding loops, closures)
-	safeScope := ts.FindSafeScope(declScope, usageScope)
-	switch safeScope {
-	case nil:
-		astutil.InternalError(ts.Pass, declNode, "Invalid scope calculations")
-		return MoveCandidate{}, false
-
-	case declScope: // No scope tightening possible
-		return MoveCandidate{}, false
-	}
-
-	// Determine assigned identifiers and whether the declaration can be moved to an init field
-	identifiers, onlyBlock := declInfo(declNode, cf, ts.maxLines)
-	if identifiers == nil {
-		return MoveCandidate{}, false // Unsupported declaration type
-	}
-
-	declPos := declNode.Pos()
-
-	// Find the nearest label after this declaration.
-	// We cannot move the declaration past it to avoid placing it inside a loop.
-	labelBarrier := nextLabel(labels, declPos)
-
-	// Find the target AST node for the move
-	targetNode := ts.TargetNode(declScope, safeScope, labelBarrier, onlyBlock)
-	if targetNode == nil || cf.NoLintComment(declPos) {
-		return MoveCandidate{}, false
-	}
-
-	// Create a move candidate
-	m := MoveCandidate{targetNode: targetNode, status: check.MoveAllowed}
-
-	// Do various safety checks whether we should suppress the fix (but not the diagnostic).
-	if cf.Generated() {
-		m.status = check.MoveBlockedGenerated
-	} else {
-		m.status = check.SafetyCheck(ts.TypesInfo, declCursor, declScope, safeScope, identifiers)
-	}
-
-	return m, true
 }
 
 // declInfo extracts assigned identifiers and whether the move is restricted to block statements only.

@@ -19,116 +19,100 @@ package tracker
 import (
 	"go/ast"
 	"go/types"
+
+	"fillmore-labs.com/scopeguard/internal/typeutil"
 )
 
 // _knownFuncs are functions that do not return.
-var _knownFuncs = map[FuncName]struct{}{
-	{Path: "os", Name: "Exit"}:        {},
-	{Path: "syscall", Name: "Exit"}:   {},
-	{Path: "runtime", Name: "Goexit"}: {},
+var _knownFuncs = map[typeutil.FuncName]struct{}{
+	{Path: "os", LocalFuncName: typeutil.LocalFuncName{Name: "Exit"}}:        {},
+	{Path: "syscall", LocalFuncName: typeutil.LocalFuncName{Name: "Exit"}}:   {},
+	{Path: "runtime", LocalFuncName: typeutil.LocalFuncName{Name: "Goexit"}}: {},
 
-	{Path: "log", Name: "Fatal"}:   {},
-	{Path: "log", Name: "Fatalf"}:  {},
-	{Path: "log", Name: "Fatalln"}: {},
-	{Path: "log", Name: "Panic"}:   {},
-	{Path: "log", Name: "Panicf"}:  {},
-	{Path: "log", Name: "Panicln"}: {},
+	{Path: "log", LocalFuncName: typeutil.LocalFuncName{Name: "Fatal"}}:   {},
+	{Path: "log", LocalFuncName: typeutil.LocalFuncName{Name: "Fatalf"}}:  {},
+	{Path: "log", LocalFuncName: typeutil.LocalFuncName{Name: "Fatalln"}}: {},
+	{Path: "log", LocalFuncName: typeutil.LocalFuncName{Name: "Panic"}}:   {},
+	{Path: "log", LocalFuncName: typeutil.LocalFuncName{Name: "Panicf"}}:  {},
+	{Path: "log", LocalFuncName: typeutil.LocalFuncName{Name: "Panicln"}}: {},
 
-	{Path: "log", Receiver: "Logger", Name: "Fatal"}:   {},
-	{Path: "log", Receiver: "Logger", Name: "Fatalf"}:  {},
-	{Path: "log", Receiver: "Logger", Name: "Fatalln"}: {},
-	{Path: "log", Receiver: "Logger", Name: "Panic"}:   {},
-	{Path: "log", Receiver: "Logger", Name: "Panicf"}:  {},
-	{Path: "log", Receiver: "Logger", Name: "Panicln"}: {},
+	{Path: "log", LocalFuncName: typeutil.LocalFuncName{Receiver: "Logger", Name: "Fatal"}}:   {},
+	{Path: "log", LocalFuncName: typeutil.LocalFuncName{Receiver: "Logger", Name: "Fatalf"}}:  {},
+	{Path: "log", LocalFuncName: typeutil.LocalFuncName{Receiver: "Logger", Name: "Fatalln"}}: {},
+	{Path: "log", LocalFuncName: typeutil.LocalFuncName{Receiver: "Logger", Name: "Panic"}}:   {},
+	{Path: "log", LocalFuncName: typeutil.LocalFuncName{Receiver: "Logger", Name: "Panicf"}}:  {},
+	{Path: "log", LocalFuncName: typeutil.LocalFuncName{Receiver: "Logger", Name: "Panicln"}}: {},
 
-	{Path: "testing", Receiver: "common", Name: "Fatal"}:   {},
-	{Path: "testing", Receiver: "common", Name: "Fatalf"}:  {},
-	{Path: "testing", Receiver: "common", Name: "FailNow"}: {},
-	{Path: "testing", Receiver: "common", Name: "Skip"}:    {},
-	{Path: "testing", Receiver: "common", Name: "Skipf"}:   {},
-	{Path: "testing", Receiver: "common", Name: "SkipNow"}: {},
+	{Path: "testing", LocalFuncName: typeutil.LocalFuncName{Receiver: "common", Name: "Fatal"}}:   {},
+	{Path: "testing", LocalFuncName: typeutil.LocalFuncName{Receiver: "common", Name: "Fatalf"}}:  {},
+	{Path: "testing", LocalFuncName: typeutil.LocalFuncName{Receiver: "common", Name: "FailNow"}}: {},
+	{Path: "testing", LocalFuncName: typeutil.LocalFuncName{Receiver: "common", Name: "Skip"}}:    {},
+	{Path: "testing", LocalFuncName: typeutil.LocalFuncName{Receiver: "common", Name: "Skipf"}}:   {},
+	{Path: "testing", LocalFuncName: typeutil.LocalFuncName{Receiver: "common", Name: "SkipNow"}}: {},
 
-	{Path: "testing", Receiver: "TB", Name: "Fatal"}:   {},
-	{Path: "testing", Receiver: "TB", Name: "Fatalf"}:  {},
-	{Path: "testing", Receiver: "TB", Name: "FailNow"}: {},
-	{Path: "testing", Receiver: "TB", Name: "Skip"}:    {},
-	{Path: "testing", Receiver: "TB", Name: "Skipf"}:   {},
-	{Path: "testing", Receiver: "TB", Name: "SkipNow"}: {},
+	{Path: "testing", LocalFuncName: typeutil.LocalFuncName{Receiver: "TB", Name: "Fatal"}}:   {},
+	{Path: "testing", LocalFuncName: typeutil.LocalFuncName{Receiver: "TB", Name: "Fatalf"}}:  {},
+	{Path: "testing", LocalFuncName: typeutil.LocalFuncName{Receiver: "TB", Name: "FailNow"}}: {},
+	{Path: "testing", LocalFuncName: typeutil.LocalFuncName{Receiver: "TB", Name: "Skip"}}:    {},
+	{Path: "testing", LocalFuncName: typeutil.LocalFuncName{Receiver: "TB", Name: "Skipf"}}:   {},
+	{Path: "testing", LocalFuncName: typeutil.LocalFuncName{Receiver: "TB", Name: "SkipNow"}}: {},
 
-	{Path: "github.com/sirupsen/logrus", Receiver: "Entry", Name: "Panic"}:    {},
-	{Path: "github.com/sirupsen/logrus", Receiver: "Entry", Name: "Panicf"}:   {},
-	{Path: "github.com/sirupsen/logrus", Receiver: "Entry", Name: "Panicln"}:  {},
-	{Path: "github.com/sirupsen/logrus", Receiver: "Logger", Name: "Exit"}:    {},
-	{Path: "github.com/sirupsen/logrus", Receiver: "Logger", Name: "Panic"}:   {},
-	{Path: "github.com/sirupsen/logrus", Receiver: "Logger", Name: "Panicf"}:  {},
-	{Path: "github.com/sirupsen/logrus", Receiver: "Logger", Name: "Panicln"}: {},
-	{Path: "go.uber.org/zap", Receiver: "Logger", Name: "Fatal"}:              {},
-	{Path: "go.uber.org/zap", Receiver: "Logger", Name: "Panic"}:              {},
-	{Path: "go.uber.org/zap", Receiver: "SugaredLogger", Name: "Fatal"}:       {},
-	{Path: "go.uber.org/zap", Receiver: "SugaredLogger", Name: "Fatalf"}:      {},
-	{Path: "go.uber.org/zap", Receiver: "SugaredLogger", Name: "Fatalln"}:     {},
-	{Path: "go.uber.org/zap", Receiver: "SugaredLogger", Name: "Fatalw"}:      {},
-	{Path: "go.uber.org/zap", Receiver: "SugaredLogger", Name: "Panic"}:       {},
-	{Path: "go.uber.org/zap", Receiver: "SugaredLogger", Name: "Panicf"}:      {},
-	{Path: "go.uber.org/zap", Receiver: "SugaredLogger", Name: "Panicln"}:     {},
-	{Path: "go.uber.org/zap", Receiver: "SugaredLogger", Name: "Panicw"}:      {},
-	{Path: "k8s.io/klog", Name: "Exit"}:                                       {},
-	{Path: "k8s.io/klog", Name: "ExitDepth"}:                                  {},
-	{Path: "k8s.io/klog", Name: "Exitf"}:                                      {},
-	{Path: "k8s.io/klog", Name: "Exitln"}:                                     {},
-	{Path: "k8s.io/klog", Name: "Fatal"}:                                      {},
-	{Path: "k8s.io/klog", Name: "FatalDepth"}:                                 {},
-	{Path: "k8s.io/klog", Name: "Fatalf"}:                                     {},
-	{Path: "k8s.io/klog", Name: "Fatalln"}:                                    {},
-	{Path: "k8s.io/klog/v2", Name: "Exit"}:                                    {},
-	{Path: "k8s.io/klog/v2", Name: "ExitDepth"}:                               {},
-	{Path: "k8s.io/klog/v2", Name: "Exitf"}:                                   {},
-	{Path: "k8s.io/klog/v2", Name: "Exitln"}:                                  {},
-	{Path: "k8s.io/klog/v2", Name: "Fatal"}:                                   {},
-	{Path: "k8s.io/klog/v2", Name: "FatalDepth"}:                              {},
-	{Path: "k8s.io/klog/v2", Name: "Fatalf"}:                                  {},
-	{Path: "k8s.io/klog/v2", Name: "Fatalln"}:                                 {},
+	{Path: "github.com/sirupsen/logrus", LocalFuncName: typeutil.LocalFuncName{Receiver: "Entry", Name: "Panic"}}:    {},
+	{Path: "github.com/sirupsen/logrus", LocalFuncName: typeutil.LocalFuncName{Receiver: "Entry", Name: "Panicf"}}:   {},
+	{Path: "github.com/sirupsen/logrus", LocalFuncName: typeutil.LocalFuncName{Receiver: "Entry", Name: "Panicln"}}:  {},
+	{Path: "github.com/sirupsen/logrus", LocalFuncName: typeutil.LocalFuncName{Receiver: "Logger", Name: "Exit"}}:    {},
+	{Path: "github.com/sirupsen/logrus", LocalFuncName: typeutil.LocalFuncName{Receiver: "Logger", Name: "Panic"}}:   {},
+	{Path: "github.com/sirupsen/logrus", LocalFuncName: typeutil.LocalFuncName{Receiver: "Logger", Name: "Panicf"}}:  {},
+	{Path: "github.com/sirupsen/logrus", LocalFuncName: typeutil.LocalFuncName{Receiver: "Logger", Name: "Panicln"}}: {},
+	{Path: "go.uber.org/zap", LocalFuncName: typeutil.LocalFuncName{Receiver: "Logger", Name: "Fatal"}}:              {},
+	{Path: "go.uber.org/zap", LocalFuncName: typeutil.LocalFuncName{Receiver: "Logger", Name: "Panic"}}:              {},
+	{Path: "go.uber.org/zap", LocalFuncName: typeutil.LocalFuncName{Receiver: "SugaredLogger", Name: "Fatal"}}:       {},
+	{Path: "go.uber.org/zap", LocalFuncName: typeutil.LocalFuncName{Receiver: "SugaredLogger", Name: "Fatalf"}}:      {},
+	{Path: "go.uber.org/zap", LocalFuncName: typeutil.LocalFuncName{Receiver: "SugaredLogger", Name: "Fatalln"}}:     {},
+	{Path: "go.uber.org/zap", LocalFuncName: typeutil.LocalFuncName{Receiver: "SugaredLogger", Name: "Fatalw"}}:      {},
+	{Path: "go.uber.org/zap", LocalFuncName: typeutil.LocalFuncName{Receiver: "SugaredLogger", Name: "Panic"}}:       {},
+	{Path: "go.uber.org/zap", LocalFuncName: typeutil.LocalFuncName{Receiver: "SugaredLogger", Name: "Panicf"}}:      {},
+	{Path: "go.uber.org/zap", LocalFuncName: typeutil.LocalFuncName{Receiver: "SugaredLogger", Name: "Panicln"}}:     {},
+	{Path: "go.uber.org/zap", LocalFuncName: typeutil.LocalFuncName{Receiver: "SugaredLogger", Name: "Panicw"}}:      {},
+	{Path: "k8s.io/klog", LocalFuncName: typeutil.LocalFuncName{Name: "Exit"}}:                                       {},
+	{Path: "k8s.io/klog", LocalFuncName: typeutil.LocalFuncName{Name: "ExitDepth"}}:                                  {},
+	{Path: "k8s.io/klog", LocalFuncName: typeutil.LocalFuncName{Name: "Exitf"}}:                                      {},
+	{Path: "k8s.io/klog", LocalFuncName: typeutil.LocalFuncName{Name: "Exitln"}}:                                     {},
+	{Path: "k8s.io/klog", LocalFuncName: typeutil.LocalFuncName{Name: "Fatal"}}:                                      {},
+	{Path: "k8s.io/klog", LocalFuncName: typeutil.LocalFuncName{Name: "FatalDepth"}}:                                 {},
+	{Path: "k8s.io/klog", LocalFuncName: typeutil.LocalFuncName{Name: "Fatalf"}}:                                     {},
+	{Path: "k8s.io/klog", LocalFuncName: typeutil.LocalFuncName{Name: "Fatalln"}}:                                    {},
+	{Path: "k8s.io/klog/v2", LocalFuncName: typeutil.LocalFuncName{Name: "Exit"}}:                                    {},
+	{Path: "k8s.io/klog/v2", LocalFuncName: typeutil.LocalFuncName{Name: "ExitDepth"}}:                               {},
+	{Path: "k8s.io/klog/v2", LocalFuncName: typeutil.LocalFuncName{Name: "Exitf"}}:                                   {},
+	{Path: "k8s.io/klog/v2", LocalFuncName: typeutil.LocalFuncName{Name: "Exitln"}}:                                  {},
+	{Path: "k8s.io/klog/v2", LocalFuncName: typeutil.LocalFuncName{Name: "Fatal"}}:                                   {},
+	{Path: "k8s.io/klog/v2", LocalFuncName: typeutil.LocalFuncName{Name: "FatalDepth"}}:                              {},
+	{Path: "k8s.io/klog/v2", LocalFuncName: typeutil.LocalFuncName{Name: "Fatalf"}}:                                  {},
+	{Path: "k8s.io/klog/v2", LocalFuncName: typeutil.LocalFuncName{Name: "Fatalln"}}:                                 {},
 }
 
 // CanReturn iteratively unwraps an expression to find the underlying function declaration.
 func CanReturn(info *types.Info, n *ast.CallExpr) bool {
-	ex := n.Fun
+	obj := typeutil.FuncOf(info, n)
 
-unwrap:
-	switch e := ex.(type) {
-	case *ast.Ident:
-		return canReturnFunc(info, e)
-
-	case *ast.SelectorExpr:
-		return canReturnFunc(info, e.Sel)
-
-	case *ast.IndexExpr: // Generic function instantiation with a type parameter ("myFunc[T]").
-		ex = e.X // Unwrap to the function identifier.
-		goto unwrap
-
-	case *ast.IndexListExpr: // Generic function instantiation with multiple type parameters ("myFunc[T, U]").
-		ex = e.X // Unwrap to the function identifier.
-		goto unwrap
-
-	case *ast.ParenExpr: // Parenthesized expression ("(myFunc)")
-		ex = e.X // Unwrap to the inner expression.
-		goto unwrap
-
-	default: // Pointer dereference or another function reference.
-		return true
-	}
+	return obj == nil || canReturnFunc(obj)
 }
 
-func canReturnFunc(info *types.Info, id *ast.Ident) bool {
-	use := info.Uses[id]
-	if fun, ok := use.(*types.Func); ok {
-		name := FuncNameOf(fun)
+func canReturnFunc(obj types.Object) bool {
+	switch obj := obj.(type) {
+	case *types.Func:
+		name := typeutil.FuncNameOf(obj)
 		_, found := _knownFuncs[name]
 
 		return !found
-	}
 
-	return use != builtinPanic
+	case *types.Builtin:
+		return obj != builtinPanic // We could also check obj.Name() != "panic"
+
+	default:
+		return true
+	}
 }
 
 var builtinPanic = types.Universe.Lookup("panic").(*types.Builtin)

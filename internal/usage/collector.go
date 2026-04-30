@@ -37,16 +37,7 @@ type collector struct {
 	// Pass is an embedded [analysis.Pass] for type information and error reporting
 	*analysis.Pass
 
-	// UsageScope is an embedded scope analyzer for scope hierarchy navigation
-	scope.UsageScope
-
-	// ShadowChecker is an embedded shadow checker.
-	check.ShadowChecker
-
-	// NestedChecker is an embedded checker for nested assignments.
-	check.NestedChecker
-
-	// scopeRanges maps declaration indices to their scope ranges (declaration scope + usage scope).
+	// scopeRanges maps declaration indices to their scope ranges (declaration scope and usage scope).
 	scopeRanges map[astutil.NodeIndex]ScopeRange
 
 	// declarations maps variables to their declaration history.
@@ -55,6 +46,15 @@ type collector struct {
 
 	// current maps variables to their current (re)declaration.
 	current map[*types.Var]declUsage
+
+	// UsageScope is an embedded scope analyzer for scope hierarchy navigation
+	scope.UsageScope
+
+	// NestedChecker is an embedded checker for nested assignments.
+	check.NestedChecker
+
+	// ShadowChecker is an embedded shadow checker.
+	check.ShadowChecker
 }
 
 // declUsage tracks the scope and position of a variable's last declaration.

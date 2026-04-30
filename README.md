@@ -3,43 +3,41 @@
 [![Go Reference](https://pkg.go.dev/badge/fillmore-labs.com/scopeguard.svg)](https://pkg.go.dev/fillmore-labs.com/scopeguard)
 [![Test](https://github.com/fillmore-labs/scopeguard/actions/workflows/test.yaml/badge.svg?branch=main)](https://github.com/fillmore-labs/scopeguard/actions/workflows/test.yaml?query=branch%3Amain)
 [![CodeQL](https://github.com/fillmore-labs/scopeguard/actions/workflows/github-code-scanning/codeql/badge.svg?branch=main)](https://github.com/fillmore-labs/scopeguard/actions/workflows/github-code-scanning/codeql?query=branch%3Amain)
-[![Coverage](https://codecov.io/gh/fillmore-labs/scopeguard/branch/main/graph/badge.svg?token=D7ZKQQKAIG)](https://codecov.io/gh/fillmore-labs/scopeguard)
+[![Coverage](https://codecov.io/gh/fillmore-labs/scopeguard/branch/main/graph/badge.svg?token=D7ZKQQKAIG)](https://codecov.io/gh/fillmore-labs/scopeguard/tree/main)
 [![Go Report Card](https://goreportcard.com/badge/fillmore-labs.com/scopeguard)](https://goreportcard.com/report/fillmore-labs.com/scopeguard)
 [![Codeberg CI](https://ci.codeberg.org/api/badges/15593/status.svg?branch=main)](https://ci.codeberg.org/repos/15593/branches/main)
 [![License](https://img.shields.io/github/license/fillmore-labs/scopeguard)](https://www.apache.org/licenses/LICENSE-2.0)
 
-A Go static analyzer that identifies variables with unnecessarily wide scope and suggests moving them into tighter
-scopes.
+ScopeGuard is a Go static analyzer that identifies variables with unnecessarily wide scopes and suggests moving them
+closer to their usage for cleaner, more maintainable code.
 
 ## Why Narrow Scope Matters
 
-Have you ever scrolled through a long function to find where a variable was last used, only to discover its declaration
-200 lines earlier?
+Have you ever scrolled through a long function trying to find where a variable was last used, only to discover it was
+declared 200 lines earlier?
 
-Wide variable scopes increase cognitive overhead and complicate refactoring. When a variable is declared far from its
-use, readers must track its lifecycle across many lines of code.
+Unnecessarily wide variable scopes increase cognitive overhead and complicate refactoring. When a variable is declared
+far from its use, readers must track its lifecycle across many unrelated lines of code.
 
-Narrow scopes address this: variables need not be tracked once their block ends, code extraction becomes simpler with
-fewer dependencies, and stale data cannot be accidentally reused.
+Narrowing scopes solves this: variables don't need to be tracked once their block ends, code extraction becomes simpler
+with fewer dependencies, and stale data can't be accidentally reused.
 
-Placing declarations close to their usage makes the relationship between variables and control structures explicit —
-aligning with patterns from [Effective Go](https://go.dev/doc/effective_go) and major style guides.
+By placing declarations close to their usage, you make the relationship between variables and control structures
+explicit, aligning with patterns from [Effective Go](https://go.dev/doc/effective_go) and major style guides.
 
 Go's design encourages narrow scoping through the `:=` operator and initialization statements in control structures.
-ScopeGuard detects opportunities to apply these idioms by moving declarations closer to their usage.
+ScopeGuard helps you apply these idioms automatically by identifying opportunities to tighten your code.
 
 ## Features
 
-ScopeGuard identifies three categories of issues:
+ScopeGuard identifies three main categories of code quality improvements:
 
-**Scope narrowing**: Moves declarations into initializers of `if`, `for`, or `switch` statements, or into narrower block
-scopes and `case` clauses. Supports both short declarations (`:=`) and explicit variable declarations. Excludes moves
-that would cross loop, closure, or labeled statement boundaries.
-
-**Shadow detection**: Detects variable shadowing (inner variables with the same name as outer ones), which can cause
-accidental usage of the wrong variable and subtle bugs.
-
-**Nested assignments**: Identifies variables modified inside closures that are part of their own assignment statement.
+- **Scope narrowing**: Moves declarations into initializers of `if`, `for`, or `switch` statements, or into narrower
+  block scopes and `case` clauses. Supports both short declarations (`:=`) and explicit variable declarations.
+- **Shadow detection**: Identifies variables that shadow outer ones in the same function, preventing accidental usage of
+  stale data and subtle bugs.
+- **Nested assignments**: Flags variables modified within their own assignment statement (e.g., inside a closure), a
+  pattern that is often error-prone during refactoring.
 
 ## Examples
 
@@ -66,7 +64,7 @@ func TestProcessor(t *testing.T) {
 }
 ```
 
-Variables are moved into the `if` initializer, scoped exactly where needed — a practice from
+Variables are moved into the `if` initializer, scoped exactly where needed; a practice from
 [Go Style Best Practices](https://google.github.io/styleguide/go/best-practices#local-variables-in-tests).
 
 **Before**:
@@ -134,34 +132,35 @@ Apply fixes automatically:
 scopeguard -fix ./...
 ```
 
-> [!NOTE]
->
-> Review automated changes before committing. See [limitations](#limitations) for cases requiring manual review.
+> Review automated changes before committing. See [Safety and Manual Review](#safety-and-manual-review) for cases
+> requiring careful attention.
 
 ### Recommended Workflow
 
-1. Use `-conservative` for safer initial refactoring:
-
-   ```shell
-   scopeguard -fix -conservative ./...
-   ```
-
-2. Review and commit changes.
-
-3. Run a comprehensive pass:
+1. Start with the default safe pass:
 
    ```shell
    scopeguard -fix ./...
    ```
 
-4. Review the remaining changes, manually refactoring the code where needed.
+2. Review and commit the changes.
 
-## When to Keep Wider Scope
+3. Run a comprehensive pass that also applies fixes flagged as potentially unsafe:
+
+   ```shell
+   scopeguard -fix -unsafe ./...
+   ```
+
+4. Review the remaining changes carefully, manually refactoring where narrowing isn't straightforward.
+
+See [Unsafe Fixes](#unsafe-fixes) for a detailed explanation of what "unsafe" means in this context.
+
+## When to Keep a Wider Scope
 
 Not every suggestion improves readability. Patterns like
 [early returns](https://google.github.io/styleguide/go/decisions#indent-error-flow) that
 [reduce nesting](https://github.com/uber-go/guide/blob/2023-05-09/style.md#reduce-nesting) may benefit from a wider
-scope. Review each suggestion to determine if narrowing improves clarity.
+scope. Always review suggestions to determine if narrowing truly improves clarity.
 
 ## Advanced Configuration
 
@@ -171,7 +170,7 @@ ScopeGuard provides additional flags for fine-tuning analysis behavior.
 
 **Flag**: `-scope` (default: `true`)
 
-The eponymous analysis — this is ScopeGuard's core check. Disable this when you only want to check shadowing.
+The eponymous analysis: this is ScopeGuard's core check. Disable this when you only want to check shadowing.
 
 ### Shadowing Detection
 
@@ -191,7 +190,7 @@ func example() error {
 }
 ```
 
-ScopeGuard's scope analysis never introduces shadowing issues — it only moves variables when safe.
+ScopeGuard's scope analysis never introduces shadowing issues; it only moves variables when safe.
 
 ### Renaming Shadowed Variables
 
@@ -290,7 +289,7 @@ func validate(data []byte) ([]byte, error) {
 }
 ```
 
-At the return statement, `err` is `nil` — stale data from previous operations. Explicitly returning `nil` clarifies the
+At the return statement, `err` is `nil`; stale data from previous operations. Explicitly returning `nil` clarifies the
 intent:
 
 **Fixed**:
@@ -400,13 +399,33 @@ Use `//nolint:scopeguard` to suppress diagnostics on specific lines:
 x, err := someFunction() //nolint:scopeguard
 ```
 
-## Limitations
+## Unsafe Fixes
+
+Some scope-narrowing transformations could change program semantics; for example, by reordering evaluation relative to
+side effects (see [Side Effect Dependencies](#side-effect-dependencies)). ScopeGuard classifies these as _unsafe_ and
+controls them with two flags:
+
+- **`-unsafe-diagnostics`** (default: `true`): report unsafe candidates as diagnostics without offering an automatic
+  fix.
+- **`-unsafe`** (default: `false`): additionally provide automatic fixes for those candidates. Implies
+  `-unsafe-diagnostics`.
+
+Without `-fix`, the two flags are equivalent and both surface the same diagnostics. The difference only matters when
+applying fixes:
+
+- `scopeguard -fix ./...`: apply only safe fixes. Unsafe candidates still appear as diagnostics for manual review.
+- `scopeguard -fix -unsafe ./...`: apply all fixes, including unsafe ones. Review the resulting diff carefully.
+- `scopeguard -unsafe-diagnostics=false ./...`: suppress unsafe diagnostics entirely. Useful in CI, where unfixable
+  diagnostics would otherwise add noise.
+
+## Safety and Manual Review
 
 Always review automated changes from `-fix`. In some cases, you may need to restructure your code for the transformation
 to be semantically correct.
 
-These limitations don't apply with `-conservative`, except for rare [pointer aliasing](#pointer-aliasing) or closure
-capture cases.
+The scenarios below are examples of what ScopeGuard classifies as [unsafe](#unsafe-fixes), except for rare cases of
+[pointer aliasing](#pointer-aliasing) or closure capture, which cannot be detected reliably and can occur even with
+otherwise safe fixes.
 
 ### Side Effect Dependencies
 
@@ -553,7 +572,7 @@ Add a `.custom-gcl.yaml` file to your project root:
 
 ```yaml
 ---
-version: v2.10.1
+version: v2.11.4
 
 name: golangci-lint
 destination: .
@@ -561,7 +580,7 @@ destination: .
 plugins:
   - module: fillmore-labs.com/scopeguard
     import: fillmore-labs.com/scopeguard/gclplugin
-    version: v0.0.6
+    version: v0.0.7
 ```
 
 Then run `golangci-lint custom` from your project root. This produces a custom `golangci-lint` executable that can be
@@ -584,7 +603,8 @@ linters:
           scope: true
           shadow: true
           nested-assign: true
-          conservative: false
+          unsafe: false
+          unsafe-diagnostics: true
           rename: true
           combine: true
           max-lines: 10
@@ -601,6 +621,44 @@ automatically run the custom `golangci-lint`.
 
 See also the `golangci-lint`
 [module plugin system](https://golangci-lint.run/docs/plugins/module-plugins/#the-automatic-way) documentation.
+
+## MCP Server
+
+The distribution includes an Model Context Protocol (MCP) server designed to help AI agents identify issues or write
+more idiomatic code.
+
+The MCP server is included in the Homebrew distribution, or you can install it from source:
+
+```shell
+go install fillmore-labs.com/scopeguard/scopeguard-mcp@latest
+```
+
+You can then add it to [Claude Code](https://code.claude.com/docs/en/mcp#option-3-add-a-local-stdio-server) with:
+
+```shell
+claude mcp add --transport stdio --scope project ScopeGuard -- scopeguard-mcp
+```
+
+[Gemini](https://geminicli.com/docs/tools/mcp-server/#adding-an-stdio-server):
+
+```shell
+gemini mcp add --transport stdio --scope project ScopeGuard scopeguard-mcp
+```
+
+or adding
+
+```json
+{
+  "mcpServers": {
+    "ScopeGuard": {
+      "command": "scopeguard-mcp"
+    }
+  }
+}
+```
+
+to [`.mcp.json`](https://code.claude.com/docs/en/mcp#project-scope),
+[`mcp_config.json`](https://antigravity.google/docs/mcp) or the configuration for your tool of choice.
 
 ## Related Tools
 

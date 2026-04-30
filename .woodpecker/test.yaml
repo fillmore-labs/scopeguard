@@ -5,16 +5,27 @@ when:
 
 matrix:
   GO_VERSION:
-    - "1.26.0"
-    - "1.25.7"
+    - "1.26.2"
+    - "1.25.9"
 
 steps:
   - name: test
     image: golang:${GO_VERSION}
     environment:
       GOTOOLCHAIN: local
+      GOPRIVATE: fillmore-labs.com
     commands:
-      - go telemetry on
       - go mod download && (cd ./internal/reachability/tracker/testdata && go mod download)
       - echo "🔨 Testing on $(go version):"
       - go test ./...
+
+  - name: test MCP
+    image: golang:${GO_VERSION}
+    environment:
+      GOTOOLCHAIN: local
+      GOPRIVATE: fillmore-labs.com
+    commands:
+      - echo "🔨 Testing on $(go version):"
+      - go -C scopeguard-mcp test . ./internal/server/... ./internal/tools/...
+    when:
+      - evaluate: 'GO_VERSION startsWith "1.26"'

@@ -23,8 +23,8 @@ import "fmt"
 
 // Two variables used in same if condition.
 func twoVarsIfCondition() {
-	// want "Variable 'a' can be moved to tighter if scope"
-	// want "Variable 'b' can be moved to tighter if scope"
+	// want "Variables 'a' and 'b' can be combined and moved to tighter if scope"
+
 	if a, b := 1, 2; a == 1 && b == 2 {
 		fmt.Println("both used in condition")
 	}
@@ -32,9 +32,8 @@ func twoVarsIfCondition() {
 
 // Three variables targeting same Init field.
 func threeVarsSwitch() {
-	// want "Variable 'x' can be moved to tighter switch scope"
-	// want "Variable 'y' can be moved to tighter switch scope"
-	// want "Variable 'z' can be moved to tighter switch scope"
+	// want "Variables 'x', 'y' and 'z' can be combined and moved to tighter switch scope"
+
 	switch x, y, z := 1, 2, 3; {
 	case x == 1:
 		fmt.Println(y, z)
@@ -71,8 +70,8 @@ func differentTargetScopes() {
 
 // Two variables competing for for loop Init.
 func twoVarsForInit() {
-	// want "Variable 'max' can be moved to tighter for scope"
-	// want "Variable 'i' can be moved to tighter for scope"
+	// want "Variables 'max' and 'i' can be combined and moved to tighter for scope"
+
 	for max, i := 10, 0; i < max; {
 		fmt.Println(i)
 		i++
@@ -87,10 +86,10 @@ func multiValueSameTarget() {
 	}
 }
 
-// Switch statement - not both can be moved inside the init.
+// Switch statement - both can be moved inside the init.
 func switchStatement() {
-	// want "Variable 'a' can be moved to tighter switch scope"
-	// want "Variable 'b' can be moved to tighter switch scope"
+	// want "Variables 'a' and 'b' can be combined and moved to tighter switch scope"
+
 	switch a, b := "a", "b"; a {
 	case b:
 		fmt.Println("switch")

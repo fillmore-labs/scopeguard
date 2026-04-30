@@ -20,6 +20,7 @@ import (
 	"go/ast"
 	"go/token"
 	"go/types"
+	"path/filepath"
 	"regexp"
 	"slices"
 	"strings"
@@ -60,6 +61,11 @@ func (c CurrentFile) Valid() bool {
 // Generated returns true if the file is a generated file.
 func (c CurrentFile) Generated() bool {
 	return c.generated
+}
+
+// Name returns the file name.
+func (c CurrentFile) Name() string {
+	return filepath.Base(c.handle.Name())
 }
 
 // Lines returns the number of Lines a statement spans.

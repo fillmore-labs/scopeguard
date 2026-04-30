@@ -53,17 +53,19 @@ func createEdits(p *analysis.Pass, in *inspector.Inspector, move target.MoveTarg
 	}
 
 	var (
+		c             byte
 		buf           bytes.Buffer
 		extraRemovals []analysis.TextEdit
 		err           error
 	)
 
 	// Build the declaration text with appropriate formatting
+	c = ' '
 	if info.needsNewline {
-		buf.WriteByte('\n') // ignore error
-	} else {
-		buf.WriteByte(' ') // ignore error
+		c = '\n'
 	}
+
+	buf.WriteByte(c) // ignore error
 
 	switch stmt := stmt.(type) {
 	case *ast.AssignStmt:
@@ -80,15 +82,15 @@ func createEdits(p *analysis.Pass, in *inspector.Inspector, move target.MoveTarg
 
 	if err != nil {
 		astutil.InternalError(p, stmt, "Can't render statement: %s", err)
-
 		return nil
 	}
 
+	c = ' '
 	if info.needsSemicolon {
-		buf.WriteByte(';') // ignore error
-	} else {
-		buf.WriteByte(' ') // ignore error
+		c = ';'
 	}
+
+	buf.WriteByte(c) // ignore error
 
 	// Build text edits: remove from the old location, insert at the new location
 	edits := []analysis.TextEdit{
@@ -228,11 +230,11 @@ func removeUnusedDecl(n *ast.DeclStmt, unused []string) []analysis.TextEdit {
 
 // insertInfo contains all information needed to insert a declaration at a target location.
 type insertInfo struct {
-	pos            token.Pos           // Where to insert the declaration
-	moveToInit     bool                // Whether moving to an Init field (vs. block scope)
-	needsNewline   bool                // Whether to add a newline before declaration
-	needsSemicolon bool                // Whether to add a semicolon after declaration
-	extraEdits     []analysis.TextEdit // Additional edits (e.g., for while-style for loops)
+	extraEdits     []analysis.TextEdit
+	pos            token.Pos
+	moveToInit     bool
+	needsNewline   bool
+	needsSemicolon bool
 }
 
 const initNotEmpty = "Init is not empty"
@@ -346,7 +348,7 @@ func fprintAssign(buf *bytes.Buffer, in *inspector.Inspector, fset *token.FileSe
 	rhs := slices.Clone(stmt.Rhs)
 
 	var extraRemovals []analysis.TextEdit
-	// Combine components from additional declarations
+	// Combine components with additional declarations
 	for _, otherDecl := range move.AbsorbedDecls {
 		otherCursor := otherDecl.Decl.Cursor(in)
 		otherNode := otherCursor.Node()
@@ -477,14 +479,13 @@ func fprintDecl(buf *bytes.Buffer, fset *token.FileSet, stmt *ast.DeclStmt, unus
 		}
 
 		if len(names) > 0 {
-			specs = append(specs,
-				&ast.ValueSpec{
-					Doc:     vspec.Doc,
-					Names:   names,
-					Type:    vspec.Type,
-					Values:  vspec.Values,
-					Comment: vspec.Comment,
-				})
+			specs = append(specs, &ast.ValueSpec{
+				Doc:     vspec.Doc,
+				Names:   names,
+				Type:    vspec.Type,
+				Values:  vspec.Values,
+				Comment: vspec.Comment,
+			})
 		}
 	}
 
@@ -508,7 +509,8 @@ func fprintDecl(buf *bytes.Buffer, fset *token.FileSet, stmt *ast.DeclStmt, unus
 
 // compositeLits identifies which RHS expressions in an assignment contain [composite literals] that need parenthesization:
 //
-//	A parsing ambiguity arises when a composite literal [...] appears as an operand between the keyword and the opening brace of the block of an "if", "for", or "switch" statement, ...
+// “A parsing ambiguity arises when a composite literal [...] appears as an operand between_
+// the keyword and the opening brace of the block of an "if", "for", or "switch" statement, [...]”
 //
 // [composite literals]: https://go.dev/ref/spec#Composite_literals
 func compositeLits(cls []int, c inspector.Cursor, start int) []int {

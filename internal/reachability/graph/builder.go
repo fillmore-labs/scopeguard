@@ -30,12 +30,12 @@ import (
 //
 // The append* methods return the next basic [block] where statements should be added.
 type builder struct {
-	block.Factory                         // All blocks created during traversal
-	labels        map[string]*LabelTarget // Maps label names to their target blocks
-	targetScopes  branchTargetScopes      // Current break/continue/fallthrough targets
-	forwardOnly   bool                    // Whether not to create backlinks
-
+	labels       map[string]*LabelTarget // Maps label names to their target blocks
+	targetScopes branchTargetScopes      // Current break/continue/fallthrough targets
 	tracker.Tracker
+
+	block.Factory      // All blocks created during traversal
+	forwardOnly   bool // Whether not to create backlinks
 }
 
 // appendStmtList appends a list of statements to the current block.

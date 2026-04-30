@@ -60,6 +60,21 @@ func renameSecond() {
 	_ = x // want "Variable 'x' used after previously shadowed"
 }
 
+func renameSecondNamed() {
+	r := 1
+	{
+		r := 2
+		_ = r
+	}
+	_ = r //nolint:scopeguard
+
+	{
+		r := 2
+		_ = r
+	}
+	_ = r // want "Variable 'r' used after previously shadowed"
+}
+
 func shadowedReturn() {
 	_ = func() (i int) {
 		i, a := -1, true

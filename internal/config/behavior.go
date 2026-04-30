@@ -17,23 +17,22 @@
 package config
 
 // DefaultBehavior returns the default behavior settings.
-func DefaultBehavior() Behavior { return FirstUseOnly | CombineDeclarations | RenameVariables }
+func DefaultBehavior() Behaviors {
+	return FirstUseOnly | CombineDeclarations | RenameVariables
+}
 
-// Behavior is representing a set of configurable binary flags for behavior control.
-type Behavior uint8
+// Behaviors is representing a set of configurable binary flags for behavior control.
+type Behaviors uint8
 
 const (
 	// IncludeGenerated specifies whether to include analysis of generated files.
-	IncludeGenerated Behavior = 1 << iota
+	IncludeGenerated Behaviors = 1 << iota
 
 	// FirstUseOnly specifies whether only the first use of a variable after being shadowed should be reported.
 	FirstUseOnly
 
 	// CombineDeclarations determines whether to combine declarations when moving to init statements.
 	CombineDeclarations
-
-	// Conservative indicates that moves should be conservative.
-	Conservative
 
 	// RenameVariables indicates that shadowed variables should be renamed.
 	RenameVariables
@@ -43,14 +42,15 @@ var _behavior = [...]string{
 	"generated",
 	"first-only",
 	"combine",
-	"conservative",
 	"rename",
 }
 
-func (b Behavior) String() string { return toString(b, _behavior[:], "none") }
+func (b Behaviors) String() string { return toString(b, _behavior[:]) }
 
 // Set adjusts the bitmask by enabling or disabling the specified option.
-func (b *Behavior) Set(flag Behavior, value bool) { set(b, flag, value) }
+func (b *Behaviors) Set(behavior Behaviors, value bool) {
+	set(b, behavior, value)
+}
 
 // Enabled checks if the specified option is enabled in the current bitmask.
-func (b Behavior) Enabled(flag Behavior) bool { return b&flag != 0 }
+func (b Behaviors) Enabled(behavior Behaviors) bool { return enabled(b, behavior) }

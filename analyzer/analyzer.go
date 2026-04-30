@@ -17,39 +17,35 @@
 package analyzer
 
 import (
+	"fmt"
+
 	"golang.org/x/tools/go/analysis"
-	"golang.org/x/tools/go/analysis/passes/inspect"
 
 	"fillmore-labs.com/scopeguard/internal/run"
-)
-
-// Public API constants for the scopeguard analyzer.
-const (
-	name = "scopeguard"
-	doc  = `scopeguard detects variables that can be moved to tighter scopes`
-	url  = "https://pkg.go.dev/fillmore-labs.com/scopeguard"
 )
 
 // New creates a new instance of the scopeguard analyzer.
 // It allows for programmatic configuration using [Option], which is useful
 // for integrating the analyzer into other tools. For command-line use, the
 // pre-configured [Analyzer] variable is typically sufficient.
-func New(opts ...Option) *analysis.Analyzer {
+func New(opts ...Option) (*analysis.Analyzer, error) {
 	r := run.DefaultOptions()
-	Join(opts...).Apply(r)
-
-	a := &analysis.Analyzer{
-		Name:     name,
-		Doc:      doc,
-		URL:      url,
-		Run:      r.Run,
-		Requires: []*analysis.Analyzer{inspect.Analyzer},
+	if err := Join(opts...).Apply(r); err != nil {
+		return nil, fmt.Errorf("configuring analyzer: %w", err)
 	}
 
+	a := r.New()
 	registerFlags(&a.Flags, r)
 
-	return a
+	return a, nil
 }
 
 // Analyzer is a pre-configured *[analysis.Analyzer] for detecting variables that can be moved to tighter scopes.
-var Analyzer = New()
+var Analyzer = func() *analysis.Analyzer {
+	a, err := New()
+	if err != nil {
+		panic(err)
+	}
+
+	return a
+}()

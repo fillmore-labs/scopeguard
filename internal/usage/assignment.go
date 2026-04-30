@@ -22,6 +22,7 @@ import (
 	"go/types"
 
 	"fillmore-labs.com/scopeguard/internal/astutil"
+	"fillmore-labs.com/scopeguard/internal/set"
 )
 
 // handleAssignedVars processes a list of expressions (LHS of an assignment) to update shadow and
@@ -36,7 +37,7 @@ import (
 func (c *collector) handleAssignedVars(exprs []ast.Expr, assignmentDone token.Pos, asgn astutil.NodeIndex) {
 	uses := c.TypesInfo.Uses
 
-	var done map[*types.Var]struct{}
+	var done set.Set[*types.Var]
 
 	for _, expr := range exprs {
 		id, ok := ast.Unparen(expr).(*ast.Ident)
@@ -50,24 +51,24 @@ func (c *collector) handleAssignedVars(exprs []ast.Expr, assignmentDone token.Po
 		}
 
 		if done == nil {
-			done = make(map[*types.Var]struct{})
-		} else if _, ok := done[v]; ok {
+			done = set.New[*types.Var]()
+		} else if done.Contains(v) {
 			// Filter out duplicate occurrences, like x, x = ...
 			continue
 		}
 
-		done[v] = struct{}{}
+		done.Add(v)
 
-		isDeclScope := true
+		declScope := true
 
 		for child := range v.Parent().Children() {
 			if child.Contains(id.NamePos) {
-				isDeclScope = false
+				declScope = false
 				break
 			}
 		}
 
-		if isDeclScope {
+		if declScope {
 			// Reassigned at declaration scope
 			c.UpdateShadows(v, id, assignmentDone)
 		} else {

@@ -16,26 +16,38 @@
 
 package run
 
-import "fillmore-labs.com/scopeguard/internal/config"
+import (
+	"fillmore-labs.com/scopeguard/internal/config"
+	"fillmore-labs.com/scopeguard/internal/typeutil"
+)
 
 // Options represent configuration runOptions for the scopeguard analyzer.
 type Options struct {
-	// Analyzers represent the Analyzers to be enabled.
-	Analyzers config.Analyzers
+	Renames typeutil.RenameMap
 
-	// Behavior holds layout and behavioral options.
-	Behavior config.Behavior
+	// Functions optionally restricts analysis to the named functions and methods.
+	Functions []typeutil.LocalFuncName
 
 	// MaxLines specifies the maximum number of lines a declaration can span to be considered for moving
 	// into control flow initializers.
 	MaxLines int
+
+	// Analyzers represent the Analyzers to be enabled.
+	Analyzers config.Analyzers
+
+	// Behaviors holds layout and behavioral options.
+	Behaviors config.Behaviors
+
+	// Filters filters diagnostics by safety.
+	Filters config.Filters
 }
 
 // DefaultOptions initializes and returns a new Options instance with default values.
 func DefaultOptions() *Options {
 	return &Options{
-		Analyzers: config.DefaultAnalyzers(),
-		Behavior:  config.DefaultBehavior(),
 		MaxLines:  -1,
+		Analyzers: config.DefaultAnalyzers(),
+		Behaviors: config.DefaultBehavior(),
+		Filters:   config.NewFilters(config.FilterAll, config.FilterSafe),
 	}
 }

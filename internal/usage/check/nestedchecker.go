@@ -41,7 +41,7 @@ type assignScope struct {
 
 // NewNestedChecker creates a new NestedChecker instance.
 //
-// If enabled is false, nested assignment tracking is disabled and the checker is a no-op that uses minimal memory.
+// If enabled is false, nested assignment tracking is disabled, and the checker is a no-op that uses minimal memory.
 func NewNestedChecker(enabled bool) NestedChecker {
 	var nc NestedChecker
 

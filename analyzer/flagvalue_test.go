@@ -31,13 +31,23 @@ const (
 	noFlags  testFlags = 0
 )
 
+func (t *testFlags) Set(flag testFlags, value bool) {
+	if value {
+		*t |= flag
+	} else {
+		*t &^= flag
+	}
+}
+
+func (t testFlags) Enabled(flag testFlags) bool { return t&flag != 0 }
+
 func TestFlagValue(t *testing.T) {
 	t.Parallel()
 
-	tests := []struct {
+	tests := [...]struct {
 		name    string
-		initial testFlags
 		args    []string
+		initial testFlags
 		want    bool
 	}{
 		{

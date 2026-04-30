@@ -35,8 +35,8 @@ func redeclared() {
 
 // Conflicting
 func multiVar() {
-	a := 1 // want "Variable 'a' can be moved to tighter if scope"
-	b := 2 // want "Variable 'b' can be moved to tighter if scope"
+	a := 1 // want "Variables 'a' and 'b' can be combined and moved to tighter if scope"
+	b := 2
 	if a == 1 && b == 2 {
 		fmt.Println("1, 2")
 	}

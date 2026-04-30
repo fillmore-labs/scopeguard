@@ -1,0 +1,64 @@
+// Copyright 2026 Oliver Eikemeier. All Rights Reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+//
+// SPDX-License-Identifier: Apache-2.0
+
+package all
+
+import "fmt"
+
+// MoveToBlock has a variable that should move into a block.
+func MoveToBlock() {
+	x := 1
+	if true {
+		fmt.Println(x)
+	}
+}
+
+// MoveToIfInit has a variable that should move into an if init.
+func MoveToIfInit() {
+	x := 1
+	if x > 0 {
+		fmt.Println(x)
+	} else {
+		fmt.Println(x)
+	}
+}
+
+// MoveToForInit has a variable that should move into a for init.
+func MoveToForInit() {
+	x := true
+	for x {
+		x = false
+	}
+}
+
+// NoIssues has no fixable issues.
+func NoIssues() {
+	x := 1
+	if true {
+		fmt.Println(x)
+	}
+	fmt.Println(x)
+}
+
+type Example struct{}
+
+// method has a fixable variable on a method receiver.
+func (Example) method() {
+	y := 2
+	if true {
+		fmt.Println(y)
+	}
+}

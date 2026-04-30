@@ -22,6 +22,9 @@ import (
 	"golang.org/x/tools/go/analysis/analysistest"
 
 	. "fillmore-labs.com/scopeguard/analyzer"
+	"fillmore-labs.com/scopeguard/internal/run"
+	"fillmore-labs.com/scopeguard/internal/set"
+	"fillmore-labs.com/scopeguard/internal/typeutil"
 )
 
 func TestAnalyzer(t *testing.T) {
@@ -29,16 +32,16 @@ func TestAnalyzer(t *testing.T) {
 
 	testdata := analysistest.TestData()
 
-	tests := []struct {
+	tests := [...]struct {
 		name    string
-		dir     string
 		options Option
+		dir     string
 		fix     bool
 	}{
 		{
 			name:    "Default",
 			dir:     "./a",
-			options: Join(WithGenerated(true), WithMaxLines(5), WithRename(false)),
+			options: Join(WithUnsafe(true), WithGenerated(true), WithMaxLines(5), WithRename(false)),
 			fix:     true,
 		},
 		{
@@ -46,9 +49,9 @@ func TestAnalyzer(t *testing.T) {
 			dir:  "./nofix",
 		},
 		{
-			name:    "Conservative",
-			dir:     "./conservative",
-			options: Join(WithConservative(true), WithCombine(false)),
+			name:    "Safe",
+			dir:     "./safe",
+			options: Join(WithUnsafeDiagnostics(false), WithCombine(false)),
 			fix:     true,
 		},
 		{
@@ -60,13 +63,31 @@ func TestAnalyzer(t *testing.T) {
 		{
 			name:    "Shadow",
 			dir:     "./shadow",
-			options: Join(WithConservative(true), WithScope(false), WithNestedAssign(false), WithRename(false)),
+			options: Join(WithScope(false), WithNestedAssign(false), WithRename(false)),
 			fix:     true,
 		},
 		{
 			name:    "Rename",
 			dir:     "./rename",
-			options: Join(WithScope(false), WithNestedAssign(false), WithRename(true)),
+			options: Join(WithScope(false), WithNestedAssign(false), WithRename(true), WithRenames(typeutil.RenameMap{{Name: "renameSecondNamed"}: {"r": {"s"}}})),
+			fix:     true,
+		},
+		{
+			name:    "RenameOnly",
+			dir:     "./renameonly",
+			options: Join(WithScope(false), WithNestedAssign(false), WithRename(false), WithRenames(typeutil.RenameMap{{Name: "renameSecondNamed"}: {"x": {"y"}}})),
+			fix:     true,
+		},
+		{
+			name:    "Filter",
+			dir:     "./filter",
+			options: WithFunctions(typeutil.LocalFuncName{Receiver: "a", Name: "A"}),
+			fix:     true,
+		},
+		{
+			name:    "Unsafe",
+			dir:     "./unsafe",
+			options: WithUnsafe(true),
 			fix:     true,
 		},
 	}
@@ -75,11 +96,50 @@ func TestAnalyzer(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			if a := New(tt.options); tt.fix {
+			a, err := New(tt.options)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			if tt.fix {
 				analysistest.RunWithSuggestedFixes(t, testdata, a, tt.dir)
 			} else {
 				analysistest.Run(t, testdata, a, tt.dir)
 			}
 		})
+	}
+}
+
+func TestUnmatchedFilter(t *testing.T) {
+	t.Parallel()
+
+	testdata := analysistest.TestData()
+
+	matchedFunc := typeutil.LocalFuncName{Receiver: "a", Name: "A"}
+	unmatchedFunc := typeutil.LocalFuncName{Name: "Func"}
+
+	functions := []typeutil.LocalFuncName{matchedFunc, unmatchedFunc}
+
+	a, err := New(WithFunctions(functions...))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	results := analysistest.Run(t, testdata, a, "./filter")
+
+	processed := set.New[typeutil.LocalFuncName]()
+
+	for _, r := range results {
+		for _, p := range r.Result.(run.Result).Processed {
+			processed.Add(p.Name)
+		}
+	}
+
+	if !processed.Contains(matchedFunc) {
+		t.Errorf("Expected %s to be processed", matchedFunc)
+	}
+
+	if processed.Contains(unmatchedFunc) {
+		t.Errorf("Expected %s to not be processed", unmatchedFunc)
 	}
 }

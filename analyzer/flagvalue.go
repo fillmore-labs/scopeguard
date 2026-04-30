@@ -18,12 +18,17 @@ package analyzer
 
 import "strconv"
 
-type flagValue[T ~uint8 | ~uint16 | ~uint32] struct {
-	flags *T
+type settable[T any] interface {
+	Set(flag T, value bool)
+	Enabled(flag T) bool
+}
+
+type flagValue[T any] struct {
+	flags settable[T]
 	value T
 }
 
-func newFlagValue[T ~uint8 | ~uint16 | ~uint32](flags *T, value T) flagValue[T] {
+func newFlagValue[T any](flags settable[T], value T) flagValue[T] {
 	return flagValue[T]{flags: flags, value: value}
 }
 
@@ -34,23 +39,19 @@ func (f flagValue[_]) Set(s string) error {
 		return err
 	}
 
-	if b {
-		*f.flags |= f.value
-	} else {
-		*f.flags &^= f.value
-	}
+	f.flags.Set(f.value, b)
 
 	return nil
 }
 
 // String implements [flag.Value].
 func (f flagValue[_]) String() string {
-	return strconv.FormatBool(f.flags != nil && *f.flags&f.value != 0)
+	return strconv.FormatBool(f.flags != nil && f.flags.Enabled(f.value))
 }
 
 // Get implements [flag.Getter].
 func (f flagValue[_]) Get() any {
-	return f.flags != nil && *f.flags&f.value != 0
+	return f.flags != nil && f.flags.Enabled(f.value)
 }
 
 // IsBoolFlag returns true to indicate that this is a boolean [flag.Value].

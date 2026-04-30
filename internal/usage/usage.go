@@ -37,16 +37,16 @@ type Stage struct {
 	*analysis.Pass
 	scope.UsageScope
 	analyzers config.Analyzers
-	behavior  config.Behavior
+	behavior  config.Behaviors
 }
 
 // New initializes a [usage.Stage].
-func New(p *analysis.Pass, scopes scope.Index, analyzers config.Analyzers, behavior config.Behavior) Stage {
+func New(p *analysis.Pass, scopes scope.Index, analyzers config.Analyzers, behaviors config.Behaviors) Stage {
 	return Stage{
 		Pass:       p,
 		UsageScope: scope.NewUsageScope(scopes),
 		analyzers:  analyzers,
-		behavior:   behavior,
+		behavior:   behaviors,
 	}
 }
 

@@ -30,55 +30,51 @@ import (
 func TestNeedParent(t *testing.T) {
 	t.Parallel()
 
-	tests := []struct {
-		name     string
-		src      string
-		expected bool // true = needs parens
+	tests := [...]struct {
+		name        string
+		src         string
+		needsParens bool
 	}{
 		{
-			name:     "Root",
-			src:      `type T struct{}; _ = T{}`,
-			expected: true,
+			name:        "Root",
+			src:         `type T struct{}; _ = T{}`,
+			needsParens: true,
 		},
 		{
-			name:     "CallExpr",
-			src:      `type T struct{}; f := func(t T) T { return t }; _ = f(T{})`,
-			expected: false,
+			name: "CallExpr",
+			src:  `type T struct{}; f := func(t T) T { return t }; _ = f(T{})`,
 		},
 		{
-			name:     "Nested CompositeLit",
-			src:      `type (U struct{};T struct{F U}); _ = T{F: U{}}`,
-			expected: true,
+			name:        "Nested CompositeLit",
+			src:         `type (U struct{};T struct{F U}); _ = T{F: U{}}`,
+			needsParens: true,
 		},
 		{
-			name:     "IndexExpr",
-			src:      `type T struct{X int}; var a [1]int; _ = a[T{}.X]`,
-			expected: false,
+			name: "IndexExpr",
+			src:  `type T struct{X int}; var a [1]int; _ = a[T{}.X]`,
 		},
 		{
-			name:     "SliceExpr",
-			src:      `type T struct{X int}; var s []int; _ = s[T{}.X:]`,
-			expected: false,
+			name: "SliceExpr",
+			src:  `type T struct{X int}; var s []int; _ = s[T{}.X:]`,
 		},
 		{
-			name:     "UnaryExpr",
-			src:      `type T struct{}; _ = &T{}`,
-			expected: true,
+			name:        "UnaryExpr",
+			src:         `type T struct{}; _ = &T{}`,
+			needsParens: true,
 		},
 		{
-			name:     "SelectorExpr",
-			src:      `type T struct{F int}; _ = T{}.F`,
-			expected: true,
+			name:        "SelectorExpr",
+			src:         `type T struct{F int}; _ = T{}.F`,
+			needsParens: true,
 		},
 		{
-			name:     "KeyValueExpr",
-			src:      `type (U struct{}; T struct{K U}); _ = T{K: U{}}`,
-			expected: true,
+			name:        "KeyValueExpr",
+			src:         `type (U struct{}; T struct{K U}); _ = T{K: U{}}`,
+			needsParens: true,
 		},
 		{
-			name:     "Nested CallExpr",
-			src:      "type T struct{}; f := func(t T) T { return t }; _ = f(f(T{}))",
-			expected: false,
+			name: "Nested CallExpr",
+			src:  "type T struct{}; f := func(t T) T { return t }; _ = f(f(T{}))",
 		},
 	}
 
@@ -102,7 +98,7 @@ func TestNeedParent(t *testing.T) {
 				t.Fatal("Assignment not found")
 			}
 
-			if got, want := NeedParent(e), tt.expected; got != want {
+			if got, want := NeedParent(e), tt.needsParens; got != want {
 				t.Errorf("Got NeedParent() = %v, want %v", got, want)
 			}
 		})

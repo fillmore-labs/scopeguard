@@ -22,14 +22,12 @@ linters:
     # keep-sorted start
     - copyloopvar
     - errcheck
-    - errname
     - exptostd
     - gocheckcompilerdirectives
     - gochecksumtype
     - gocritic
     - godot
     - goheader
-    - gomoddirectives
     - gosec
     - govet
     - iface
@@ -51,17 +49,27 @@ linters:
     - tagliatelle
     - testableexamples
     - thelper
-    - tparallel
     - unconvert
     - unused
     - usestdlibvars
     - usetesting
     - wsl_v5
     # keep-sorted end
-    - scopeguard
     - errortype
+    - scopeguard
   settings:
     custom:
+      errortype:
+        type: module
+        description: errortype helps prevent subtle bugs in error handling.
+        original-url: https://fillmore-labs.com/errortype
+        settings:
+          naming: true
+          style-check: true
+          check-unused: true
+          unchecked-assert: true
+          check-is: true
+          deep-is-check: false
       scopeguard:
         type: module
         description: >-
@@ -69,19 +77,7 @@ linters:
           scopes.
         original-url: https://fillmore-labs.com/scopeguard
         settings:
-          conservative: true
           max-lines: 10
-      errortype:
-        type: module
-        description: errortype helps prevent subtle bugs in error handling.
-        original-url: https://fillmore-labs.com/errortype
-        settings:
-          style-check: true
-          deep-is-check: false
-          check-is: true
-          unchecked-assert: true
-          check-unused: true
-          # naming: true
     # keep-sorted start
     errcheck:
       exclude-functions:
@@ -90,15 +86,17 @@ linters:
         - (io/fs.File).Close
         - (*os.File).Close
         - (*github.com/goccy/go-yaml.Encoder).Close
+        - (*github.com/modelcontextprotocol/go-sdk/mcp.ClientSession).Close
+        - (*github.com/modelcontextprotocol/go-sdk/mcp.ServerSession).Close
       verbose: true
     goheader:
       values:
         const:
           AUTHOR: Oliver Eikemeier
         regexp:
-          RANGE: '((2025\-2026)|2025|2026)'
+          RANGE: ((2025-2026)|2025|2026)
       template: |-
-        Copyright {{ RANGE }} {{ AUTHOR }}. All Rights Reserved.
+        Copyright {{RANGE}} {{AUTHOR}}. All Rights Reserved.
 
         Licensed under the Apache License, Version 2.0 (the "License");
         you may not use this file except in compliance with the License.
@@ -120,6 +118,9 @@ linters:
         - fieldalignment
         - shadow
     gosec:
+      excludes:
+        - G304
+        - G703
       config:
         G104:
           ast:
@@ -164,17 +165,22 @@ linters:
     tagliatelle:
       case:
         rules:
-          json: kebab
+          json: snake
           yaml: kebab
         use-field-name: true
+        overrides:
+          - pkg: gclplugin
+            rules:
+              json: kebab
     wsl_v5:
       disable:
         - assign
         # keep-sorted end
   exclusions:
+    paths:
+      - ^examples/
+      - ^(scopeguard-mcp/)?internal/diff/
     rules:
-      - path: examples/
-        source: .
       - path: ^main\.go$
         linters:
           - gocheckcompilerdirectives

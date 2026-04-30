@@ -33,8 +33,8 @@ func TestFindSafeScope(t *testing.T) {
 
 	tests := [...]struct {
 		name string
-		src  string
 		want ast.Node
+		src  string
 	}{
 		{
 			name: "simple_block",
@@ -73,7 +73,7 @@ func TestFindSafeScope(t *testing.T) {
 		},
 		{
 			name: "range_loop_expr",
-			src:  `x := []int{1}; for _, v := range x { _ = v }`,
+			src:  `x := [...]int{1}; for _, v := range x { _ = v }`,
 			want: (*ast.FuncType)(nil),
 		},
 		{

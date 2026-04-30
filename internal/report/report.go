@@ -32,33 +32,48 @@ import (
 	"fillmore-labs.com/scopeguard/internal/config"
 	"fillmore-labs.com/scopeguard/internal/scope"
 	"fillmore-labs.com/scopeguard/internal/target"
+	"fillmore-labs.com/scopeguard/internal/usage"
 )
 
-// ProcessDiagnostics generates and emits diagnostics for variables that can be moved to tighter scopes.
+// Diagnostics aggregates all analysis findings for the reporting stage.
+type Diagnostics struct {
+	astutil.CurrentFile
+	Moves []target.MoveTarget
+	usage.Diagnostics
+}
+
+// Process generates and emits diagnostics for variables that can be moved to tighter scopes.
 //
 // This is the final phase of the analyzer pipeline. For each move target identified by the
 // target phase, this function constructs a diagnostic message describing what can be moved
 // and where, generates a suggested fix with text edits to perform the move (if possible) and
 // reports the diagnostic to the analysis framework.
-func ProcessDiagnostics(ctx context.Context, p *analysis.Pass, fdecl inspector.Cursor, diagnostics Diagnostics, option config.Behavior) {
+func (d Diagnostics) Process(ctx context.Context, p *analysis.Pass, fdecl inspector.Cursor, filters config.Filters, renames map[string][]string, rename bool) {
 	in := fdecl.Inspector()
 
-	conservative := option.Enabled(config.Conservative)
+	hadFixes := reportMoves(ctx, p, in, d.Moves, filters)
 
-	hadFixes := reportMoves(ctx, p, in, diagnostics.Moves, conservative)
+	// Nested assignments have no fixes, renames are always safe
+	if !filters.Diagnostic().Enabled(config.FilterSafe) {
+		return
+	}
 
 	// Report nested assignments
-	reportNestedAssigned(ctx, p, in, diagnostics.CurrentFile, diagnostics.Nested)
+	reportNestedAssigned(ctx, p, in, d.CurrentFile, d.Nested)
 
 	// If hadFixes is true, variable renaming is suppressed. This is used to prevent conflicting
 	// text edits when other fixes have already been applied in the same pass.
-	rename := !hadFixes && option.Enabled(config.RenameVariables) && !diagnostics.Generated()
+	rename = rename && !hadFixes && filters.Fix().Enabled(config.FilterSafe)
 
 	// Report variables used after shadowed
-	reportUsedAfterShadow(ctx, p, diagnostics.CurrentFile, fdecl, diagnostics.Shadows, rename)
+	reportUsedAfterShadow(ctx, p, d.CurrentFile, fdecl, d.Shadows, renames, rename)
 }
 
-func reportMoves(ctx context.Context, p *analysis.Pass, in *inspector.Inspector, moves []target.MoveTarget, conservative bool) bool {
+// reportMoves emits diagnostics for move targets:
+//
+//   - Diagnostic creation: filtered by filters.Diagnostic().
+//   - Fix generation: filtered by filters.Fix(), when a diagnostic exists.
+func reportMoves(ctx context.Context, p *analysis.Pass, in *inspector.Inspector, moves []target.MoveTarget, filters config.Filters) bool {
 	if len(moves) == 0 {
 		return false
 	}
@@ -68,24 +83,25 @@ func reportMoves(ctx context.Context, p *analysis.Pass, in *inspector.Inspector,
 	hasFixes := false
 
 	for _, move := range moves {
-		movable := move.Status.Movable()
-		if conservative && !movable {
+		safety := move.MoveStatus.Safety()
+		if !filters.Diagnostic().Allowed(safety) {
 			continue
 		}
 
-		c := move.Decl.Cursor(in)
-		node := c.Node()
+		node := move.Decl.Node(in)
+		cat := move.MoveStatus.String()
 
 		diagnostic := analysis.Diagnostic{
-			Pos: node.Pos(),
-			End: node.End(),
+			Pos:      node.Pos(),
+			End:      node.End(),
+			Category: cat,
 		}
 
-		diagnostic.Message, diagnostic.Related = createMessage(in, move)
+		diagnostic.Message, diagnostic.Related = createMessage(in, move, cat)
 
-		if movable {
-			if edits := createEdits(p, in, move); len(edits) > 0 {
-				diagnostic.SuggestedFixes = []analysis.SuggestedFix{{Message: diagnostic.Message, TextEdits: edits}}
+		if filters.Fix().Allowed(safety) {
+			if msg, edits := diagnostic.Message, createEdits(p, in, move); len(edits) > 0 {
+				diagnostic.SuggestedFixes = []analysis.SuggestedFix{{Message: msg, TextEdits: edits}}
 				hasFixes = true
 			}
 		}
@@ -97,7 +113,7 @@ func reportMoves(ctx context.Context, p *analysis.Pass, in *inspector.Inspector,
 }
 
 // createMessage constructs the diagnostic message and related information.
-func createMessage(in *inspector.Inspector, move target.MoveTarget) (message string, related []analysis.RelatedInformation) {
+func createMessage(in *inspector.Inspector, move target.MoveTarget, cat string) (message string, related []analysis.RelatedInformation) {
 	switch move.TargetNode {
 	case nil:
 		format := "Variable %s is unused and can be removed (sg:%s)"
@@ -107,27 +123,56 @@ func createMessage(in *inspector.Inspector, move target.MoveTarget) (message str
 
 		allNames := concatNames(move.Unused)
 
-		return fmt.Sprintf(format, allNames, move.Status), nil
+		return fmt.Sprintf(format, allNames, cat), nil
 
 	default:
-		node := move.Decl.Node(in)
-		varNames := collectNames(node)
-
-		if len(move.Unused) > 0 {
-			varNames = slices.DeleteFunc(varNames, func(name string) bool { return slices.Contains(move.Unused, name) })
+		varNames := declNames(in, move.MovableDecl)
+		for _, absorbed := range move.AbsorbedDecls {
+			varNames = append(varNames, declNames(in, absorbed)...)
 		}
 
-		format := "Variable %s can be moved to tighter %s scope (sg:%s)"
-		if len(varNames) > 1 {
+		var format string
+
+		switch {
+		case len(move.AbsorbedDecls) > 0:
+			format = "Variables %s can be combined and moved to tighter %s scope (sg:%s)"
+		case len(varNames) > 1:
 			format = "Variables %s can be moved to tighter %s scope (sg:%s)"
+		default:
+			format = "Variable %s can be moved to tighter %s scope (sg:%s)"
 		}
 
 		allNames := concatNames(varNames)
 		targetName := scope.Name(move.TargetNode)
 
-		return fmt.Sprintf(format, allNames, targetName, move.Status),
-			[]analysis.RelatedInformation{{Pos: move.TargetNode.Pos(), Message: fmt.Sprintf("To this %s scope", targetName)}}
+		related := make([]analysis.RelatedInformation, 0, len(move.AbsorbedDecls)+1)
+
+		for _, absorbed := range move.AbsorbedDecls {
+			absorbedNode := absorbed.Decl.Node(in)
+			related = append(related, analysis.RelatedInformation{
+				Pos:     absorbedNode.Pos(),
+				Message: "Combined with this declaration",
+			})
+		}
+
+		related = append(related, analysis.RelatedInformation{
+			Pos:     move.TargetNode.Pos(),
+			Message: fmt.Sprintf("Moved to this %s scope", targetName),
+		})
+
+		return fmt.Sprintf(format, allNames, targetName, cat), related
 	}
+}
+
+// declNames returns the declared names of `decl` minus any unused ones.
+func declNames(in *inspector.Inspector, decl target.MovableDecl) []string {
+	names := collectNames(decl.Decl.Node(in))
+
+	if len(decl.Unused) > 0 {
+		names = slices.DeleteFunc(names, func(name string) bool { return slices.Contains(decl.Unused, name) })
+	}
+
+	return names
 }
 
 // collectNames extracts variable names from a declaration statement.

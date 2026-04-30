@@ -72,6 +72,9 @@ func (sc *ShadowChecker) UsedAfterShadow() []ShadowUse {
 
 // shadowInfo tracks when an outer variable is shadowed by an inner declaration.
 type shadowInfo struct {
+	// reassigns is a list of positions from where the variable is considered reassigned
+	reassigns []token.Pos
+
 	// end is the position where shadowing ends (end of reassignment to outer variable, or NoPos if not yet reassigned).
 	end token.Pos
 
@@ -84,9 +87,6 @@ type shadowInfo struct {
 
 	// shadowPos is the position of the inner identifier declaration that shadows the outer variable.
 	shadowPos token.Pos
-
-	// reassigns is a list of positions from where the variable is considered reassigned
-	reassigns []token.Pos
 }
 
 // shadowing reports whether the given position falls within the shadowing window.
@@ -118,7 +118,7 @@ func (sc *ShadowChecker) CheckUseAfterShadowed(variable *types.Var, namePos toke
 		return
 	}
 
-	// Do we have a reachable reassign in a subscope?
+	// Do we have a reachable reassigning in a subscope?
 	for _, r := range s.reassigns {
 		if reachable, ok := sc.Reachable(r-1, namePos); ok && reachable {
 			return
